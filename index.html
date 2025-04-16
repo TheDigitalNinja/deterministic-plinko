@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plinko Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #1a1a2e;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        .bucket-buttons {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #4a4e69;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #6a6d91;
+        }
+
+        button.selected {
+            background-color: #f72585;
+        }
+
+        canvas {
+            border: 2px solid #f72585;
+            background-color: #16213e;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Plinko Game</h1>
+        
+        <div class="bucket-buttons">
+            <button id="bucket1">1</button>
+            <button id="bucket2">2</button>
+            <button id="bucket3">3</button>
+            <button id="bucket4">4</button>
+            <button id="bucket5">5</button>
+            <button id="random">Random</button>
+        </div>
+        
+        <div class="controls">
+            <button id="drop">Drop Ball</button>
+            <button id="reset">Reset</button>
+        </div>
+        
+        <canvas id="plinkoCanvas"></canvas>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Game constants
+            const canvas = document.getElementById('plinkoCanvas');
+            const ctx = canvas.getContext('2d');
+            const bucketButtons = document.querySelectorAll('.bucket-buttons button');
+            const dropButton = document.getElementById('drop');
+            const resetButton = document.getElementById('reset');
+            
+            let selectedBucket = null;
+            let isGameActive = false;
+            let animationFrameId = null;
+            
+            // Resize the canvas to maintain proper size and aspect ratio
+            function resizeCanvas() {
+                const containerWidth = document.querySelector('.game-container').offsetWidth;
+                const maxWidth = 800;
+                const width = Math.min(containerWidth - 20, maxWidth);
+                const height = width * 1.5;
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Redraw if necessary
+                if (!isGameActive) {
+                    drawGame();
+                }
+            }
+            
+            // Set up initial game state
+            function initGame() {
+                // Initialize game objects and properties here
+                resizeCanvas();
+                addEventListeners();
+                drawGame();
+            }
+            
+            // Draw the game elements on the canvas
+            function drawGame() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Game drawing code will go here
+                // This will include drawing pegs, ball, and buckets
+            }
+            
+            // Game loop
+            function gameLoop() {
+                // Update game physics
+                // Update positions and handle collisions
+                
+                // Draw everything
+                drawGame();
+                
+                // Continue the loop if game is active
+                if (isGameActive) {
+                    animationFrameId = requestAnimationFrame(gameLoop);
+                }
+            }
+            
+            // Event handlers
+            function handleBucketSelection(event) {
+                if (isGameActive) return;
+                
+                bucketButtons.forEach(btn => btn.classList.remove('selected'));
+                event.target.classList.add('selected');
+                
+                if (event.target.id === 'random') {
+                    selectedBucket = 'random';
+                } else {
+                    selectedBucket = parseInt(event.target.textContent);
+                }
+            }
+            
+            function handleDropBall() {
+                if (isGameActive || selectedBucket === null) return;
+                
+                isGameActive = true;
+                dropButton.disabled = true;
+                
+                // Initialize ball and start game loop
+                // Code for ball creation and initialization will go here
+                
+                gameLoop();
+            }
+            
+            function handleReset() {
+                isGameActive = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                
+                dropButton.disabled = false;
+                drawGame();
+            }
+            
+            function addEventListeners() {
+                // Add event listeners
+                bucketButtons.forEach(btn => {
+                    btn.addEventListener('click', handleBucketSelection);
+                });
+                
+                dropButton.addEventListener('click', handleDropBall);
+                resetButton.addEventListener('click', handleReset);
+                window.addEventListener('resize', resizeCanvas);
+            }
+            
+            // Initialize the game
+            initGame();
+        });
+    </script>
+</body>
+</html>
