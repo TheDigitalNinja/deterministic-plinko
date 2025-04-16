@@ -273,9 +273,6 @@
             <div class="debug-section">
                 <div class="debug-label">Last Result:</div>
                 <div class="debug-value" id="debug-last-result">None</div>
-                
-                <div class="debug-label">Last Drop Time:</div>
-                <div class="debug-value" id="debug-drop-time">0.00s</div>
             </div>
         </div>
         
@@ -1004,14 +1001,7 @@
                         ctx.shadowBlur = 0;
                     }
                     
-                    // Show bucket score if enabled
-                    if (bucket.score && bucket.score > 0) {
-                        const scoreY = bucket.y - 25;
-                        ctx.fillStyle = '#ffffff';
-                        ctx.font = `bold ${Math.floor(bucket.width / 7)}px Arial`;
-                        ctx.textAlign = 'center';
-                        ctx.fillText(`${bucket.score}`, bucket.x, scoreY);
-                    }
+                    // Bucket scores disabled
                 });
             }
             
@@ -1487,17 +1477,36 @@
                             }
                         }
                         
-                        // End game after a short delay
-                        setTimeout(() => {
-                            isGameActive = false;
-                            gameState = 'completed';
-                            
-                            // Update controls for completed state
-                            updateControls();
-                            
-                            // Keep ball visible but cancel animation loop
-                            cancelAnimationFrame(animationFrameId);
-                        }, 1000);
+                        // End game immediately instead of waiting
+                        isGameActive = false;
+                        gameState = 'completed';
+                        
+                        // Update controls for completed state
+                        updateControls();
+                        
+                        // Continue animation loop to prevent stuck animation
+                        animationFrameId = requestAnimationFrame(gameLoop);
+                        
+                        // Set up animation to gradually slow down the ball
+                        const slowDownInterval = setInterval(() => {
+                            if (ball) {
+                                // Slow down particle and animation effects
+                                const decayFactor = 0.9;
+                                if (particles.length > 0) {
+                                    particles.forEach(p => {
+                                        p.vx *= decayFactor;
+                                        p.vy *= decayFactor;
+                                    });
+                                }
+                                
+                                // Clear interval after a time
+                                if (!ball || particles.length === 0) {
+                                    clearInterval(slowDownInterval);
+                                }
+                            } else {
+                                clearInterval(slowDownInterval);
+                            }
+                        }, 100);
                         
                         return true;
                     }
@@ -1928,16 +1937,14 @@
                 gameState = 'ready';
                 dropButton.disabled = false;
                 
-                // Stop animation frame
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                    animationFrameId = null;
-                }
+                // No longer canceling animation frame - animation continues to run always
                 
                 // Clear any active bucket highlights
                 if (bucketLocations && bucketLocations.length) {
                     bucketLocations.forEach(bucket => {
                         bucket.highlight = false;
+                        // Reset bucket score display
+                        bucket.score = 0;
                     });
                 }
                 
@@ -1988,21 +1995,22 @@
                 deltaTime = (timestamp - lastTimestamp) / 16; // Normalize to ~60fps
                 lastTimestamp = timestamp;
                 
-                // Update game physics
-                updateBall(deltaTime);
+                // Update game physics if active
+                if (isGameActive) {
+                    updateBall(deltaTime);
+                }
                 
                 // Draw everything
                 drawGame();
                 
-                // Update debug panel timer every 20 frames (approximately every 333ms at 60fps)
+                // Update debug panel occasionally
                 if (timestamp % 20 === 0) {
                     updateDebugInfo();
                 }
                 
-                // Continue the loop if game is active
-                if (isGameActive) {
-                    animationFrameId = requestAnimationFrame(gameLoop);
-                }
+                // Continue the animation loop
+                // Always request next frame to prevent stuck animations
+                animationFrameId = requestAnimationFrame(gameLoop);
             }
             
             // Track if we've already handled a landing for the current ball
@@ -2028,14 +2036,7 @@
                 // Update statistics and debug panel
                 updateGameStatistics();
                 
-                // Schedule periodic updates of the debug timer until reset
-                const timerUpdateInterval = setInterval(() => {
-                    if (ball && ball.dropStartTime) {
-                        updateDebugInfo();
-                    } else {
-                        clearInterval(timerUpdateInterval);
-                    }
-                }, 100);
+                // Periodic updates no longer needed as we've removed the timer
             }
             
             // Update and display game statistics
@@ -2064,7 +2065,6 @@
                 const debugTarget = document.getElementById('debug-target');
                 const debugSuccessRate = document.getElementById('debug-success-rate');
                 const debugLastResult = document.getElementById('debug-last-result');
-                const debugDropTime = document.getElementById('debug-drop-time');
                 
                 // Update game status information
                 if (debugMode) {
@@ -2105,14 +2105,7 @@
                     debugLastResult.style.color = gameStats.lastResult === 'success' ? '#4ade80' : '#f87171';
                 }
                 
-                // Update drop time
-                if (debugDropTime && ball && ball.dropStartTime) {
-                    const currentTime = Date.now();
-                    const elapsedSeconds = ((currentTime - ball.dropStartTime) / 1000).toFixed(2);
-                    debugDropTime.textContent = `${elapsedSeconds}s`;
-                } else if (debugDropTime) {
-                    debugDropTime.textContent = '0.00s';
-                }
+                // Drop time display removed
             }
             
             // Event handlers
