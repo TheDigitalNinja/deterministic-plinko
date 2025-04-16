@@ -360,7 +360,7 @@
                     '#b5179e'  // Magenta
                 ],
                 bucketHighlightTime: 2000, // How long bucket highlight effect lasts (ms)
-                bucketDepth: 0.1,        // Bucket height as proportion of canvas height
+                bucketDepth: 0.15,       // Bucket height as proportion of canvas height (increased from 0.1)
                 bucketRimThickness: 5,   // Thickness of bucket rim in pixels
                 bucketGlowIntensity: 0.4, // Intensity of bucket highlight glow
                 bucketParticles: true,   // Whether to show particles in buckets
@@ -563,7 +563,8 @@
                 bucketLocations = [];
                 
                 // Bucket dimensions - position closer to bottom pegs
-                const bucketY = canvas.height * 0.85;
+                // Adjust Y position to accommodate taller buckets
+                const bucketY = canvas.height * 0.84;
                 const bucketHeight = canvas.height * GAME_CONFIG.bucketDepth;
                 
                 // Simple approach: 5 equal buckets across the entire canvas width
