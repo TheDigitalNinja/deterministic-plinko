@@ -17,13 +17,27 @@
             font-family: Arial, sans-serif;
             color: #fff;
         }
+        
+        h1 {
+            width: 750px;
+            text-align: center;
+            margin: 0 auto 10px auto;
+        }
 
         .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin-top: 20px;
+        }
+        
+        .game-content {
             display: flex;
             flex-direction: row;
             align-items: flex-start;
             width: 100%;
-            max-width: 1000px;
         }
 
         .debug-panel {
@@ -33,6 +47,7 @@
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            margin-top: 194px; /* Align with canvas */
         }
 
         .debug-panel h3 {
@@ -76,6 +91,19 @@
             align-items: center;
             width: 100%;
             max-width: 750px;
+        }
+        
+        .game-header {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .game-area {
+            width: 100%;
+            display: flex;
+            justify-content: center;
         }
 
         .controls {
@@ -253,10 +281,9 @@
     </style>
 </head>
 <body>
-    <h1>Plinko Game</h1>
-    
     <div class="game-wrapper">
-        <div class="debug-panel">
+        <div class="game-content">
+            <div class="debug-panel">
             <h3>Debug Info</h3>
             
             <div class="debug-section">
@@ -283,27 +310,30 @@
         </div>
         
         <div class="game-container">
-            <div class="game-mode">
-                <h3>Select Target Bucket</h3>
-                <div class="mode-description" id="mode-description">
-                    Select which bucket the ball should land in
+            <div class="game-header">
+                <h1>Plinko Game</h1>
+                <div class="game-mode">
+                    <h3>Select Target Bucket</h3>
+                </div>
+                
+                <div class="bucket-buttons">
+                    <button id="bucket1" class="target-btn" data-bucket="1">1</button>
+                    <button id="bucket2" class="target-btn" data-bucket="2">2</button>
+                    <button id="bucket3" class="target-btn" data-bucket="3">3</button>
+                    <button id="bucket4" class="target-btn" data-bucket="4">4</button>
+                    <button id="bucket5" class="target-btn" data-bucket="5">5</button>
+                </div>
+                
+                <div class="controls">
+                    <button id="drop">Drop Ball</button>
+                    <button id="reset">Reset</button>
                 </div>
             </div>
             
-            <div class="bucket-buttons">
-                <button id="bucket1" class="target-btn" data-bucket="1">1</button>
-                <button id="bucket2" class="target-btn" data-bucket="2">2</button>
-                <button id="bucket3" class="target-btn" data-bucket="3">3</button>
-                <button id="bucket4" class="target-btn" data-bucket="4">4</button>
-                <button id="bucket5" class="target-btn" data-bucket="5">5</button>
+            <div class="game-area">
+                <canvas id="plinkoCanvas"></canvas>
             </div>
-            
-            <div class="controls">
-                <button id="drop">Drop Ball</button>
-                <button id="reset">Reset</button>
-            </div>
-            
-            <canvas id="plinkoCanvas"></canvas>
+        </div>
         </div>
     </div>
 
@@ -1942,20 +1972,8 @@
             
             // Update UI based on the selected target bucket
             function updateModeUI() {
-                // Update mode description
-                const modeDescription = document.getElementById('mode-description');
-                
-                if (!selectedBucket) {
-                    if (modeDescription) {
-                        modeDescription.textContent = "Select which bucket the ball should land in";
-                    }
-                    return;
-                }
-                
-                // Show which bucket is selected
-                if (modeDescription) {
-                    modeDescription.textContent = `Ball will land in Bucket ${selectedBucket}`;
-                }
+                // Mode description was removed
+                // No text to update
                 
                 // Make sure the correct bucket button is highlighted
                 const selectedBucketButton = document.querySelector(`.target-btn[data-bucket="${selectedBucket}"]`);
