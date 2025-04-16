@@ -34,11 +34,39 @@
             gap: 15px;
         }
 
+        .game-mode {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .game-mode h3 {
+            margin: 0 0 5px 0;
+            color: #f8f9fa;
+            font-size: 1.2rem;
+        }
+        
+        .mode-description {
+            font-size: 0.9rem;
+            color: #adb5bd;
+            margin-bottom: 15px;
+        }
+        
+        .game-stats {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #adb5bd;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 24px;
+        }
+        
         .bucket-buttons {
             display: flex;
             justify-content: space-around;
             width: 100%;
             margin-bottom: 20px;
+            max-width: 600px;
         }
 
         button {
@@ -52,6 +80,34 @@
             transition: all 0.3s;
             position: relative;
             overflow: hidden;
+        }
+        
+        .target-btn {
+            font-weight: bold;
+            font-size: 1.1rem;
+            min-width: 50px;
+            position: relative;
+        }
+        
+        .target-btn::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background-color: transparent;
+            transition: all 0.3s;
+        }
+        
+        .target-btn.selected::after {
+            background-color: #f72585;
+            box-shadow: 0 0 10px rgba(247, 37, 133, 0.7);
+        }
+        
+        .target-btn.selected {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
         button:hover {
@@ -148,18 +204,29 @@
     <div class="game-container">
         <h1>Plinko Game</h1>
         
+        <div class="game-mode">
+            <h3>Select Target Mode</h3>
+            <div class="mode-description" id="mode-description">
+                Select a specific bucket number or choose Random mode
+            </div>
+        </div>
+        
         <div class="bucket-buttons">
-            <button id="bucket1">1</button>
-            <button id="bucket2">2</button>
-            <button id="bucket3">3</button>
-            <button id="bucket4">4</button>
-            <button id="bucket5">5</button>
-            <button id="random">Random</button>
+            <button id="bucket1" class="target-btn" data-bucket="1">1</button>
+            <button id="bucket2" class="target-btn" data-bucket="2">2</button>
+            <button id="bucket3" class="target-btn" data-bucket="3">3</button>
+            <button id="bucket4" class="target-btn" data-bucket="4">4</button>
+            <button id="bucket5" class="target-btn" data-bucket="5">5</button>
+            <button id="random" class="target-btn">Random</button>
         </div>
         
         <div class="controls">
             <button id="drop">Drop Ball</button>
             <button id="reset">Reset</button>
+        </div>
+        
+        <div class="game-stats">
+            <span id="stats-display"></span>
         </div>
         
         <canvas id="plinkoCanvas"></canvas>
@@ -745,6 +812,15 @@
                     // Override with selected bucket color if needed
                     if (isSelectedBucket) {
                         bucketColor = GAME_CONFIG.bucketColors[0] || '#f72585';
+                        
+                        // Add subtle pulsing if this is the selected target (not in random mode)
+                        if (selectedBucket !== 'random' && !isGameActive) {
+                            const pulse = Math.sin(Date.now() / 500) * 15;
+                            const r = 247 - pulse;
+                            const g = 37 + pulse;
+                            const b = 133;
+                            bucketColor = `rgb(${r}, ${g}, ${b})`;
+                        }
                     }
                     
                     // Special visual if bucket is target during active game
@@ -1583,30 +1659,66 @@
                     rotationSpeed: (Math.random() - 0.5) * 0.2
                 };
                 
-                // Update UI for random mode if needed
-                updateRandomModeUI();
+                // Update UI for current mode
+                updateModeUI();
             }
             
-            // Update UI elements for random mode
-            function updateRandomModeUI() {
-                if (selectedBucket !== 'random') return;
+            // Update UI based on selected mode (target or random)
+            function updateModeUI() {
+                // Clear previous active state on all bucket buttons
+                document.querySelectorAll('.target-btn').forEach(btn => {
+                    btn.classList.remove('active-random');
+                    btn.classList.remove('pulsing');
+                    btn.classList.remove('selected');
+                });
                 
-                // Optional: Show some UI element indicating the system's selection
-                // For this implementation, we'll just update the UI to highlight that we're in random mode
+                // Update mode description
+                const modeDescription = document.getElementById('mode-description');
+                const statsDisplay = document.getElementById('stats-display');
                 
-                // Update button styles for random mode
-                const randomButton = document.getElementById('random');
-                if (randomButton) {
-                    randomButton.classList.add('active-random');
+                if (!selectedBucket) {
+                    if (modeDescription) {
+                        modeDescription.textContent = "Select a specific bucket number or choose Random mode";
+                    }
+                    return;
+                }
+                
+                // Update UI based on selected mode
+                if (selectedBucket === 'random') {
+                    // Set description for random mode
+                    if (modeDescription) {
+                        modeDescription.textContent = "Random Mode: System will select a target bucket";
+                    }
                     
-                    // Pulsing effect for the random button when active
-                    if (!randomButton.classList.contains('pulsing')) {
-                        randomButton.classList.add('pulsing');
+                    // Update button styles for random mode
+                    const randomButton = document.getElementById('random');
+                    if (randomButton) {
+                        randomButton.classList.add('active-random');
+                        randomButton.classList.add('selected');
+                        
+                        // Pulsing effect for the random button when active
+                        if (!randomButton.classList.contains('pulsing')) {
+                            randomButton.classList.add('pulsing');
+                        }
+                    }
+                } else {
+                    // Set description for target mode
+                    if (modeDescription) {
+                        modeDescription.textContent = `Target Mode: Ball will land in Bucket ${selectedBucket}`;
+                    }
+                    
+                    // Highlight the selected bucket button
+                    const selectedBucketButton = document.querySelector(`.target-btn[data-bucket="${selectedBucket}"]`);
+                    if (selectedBucketButton) {
+                        selectedBucketButton.classList.add('selected');
                     }
                 }
                 
-                // Display subtle indicator of which bucket was selected, if desired
-                // For this implementation, we'll leave this subtle
+                // Update stats display if we have stats
+                if (statsDisplay && gameStats.totalDrops > 0) {
+                    const successRate = (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1);
+                    statsDisplay.textContent = `Success Rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`;
+                }
             }
             
             // Reset the ball to the top of the screen
@@ -1639,6 +1751,7 @@
                 
                 // Update the UI
                 updateControls();
+                updateModeUI();
                 
                 // Redraw the game
                 drawGame();
@@ -1718,17 +1831,14 @@
                 const successRate = gameStats.totalDrops > 0 ? 
                     (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1) : 0;
                 
-                // Optional: Update some UI element to show statistics
-                // For this implementation, we'll just log to console
-                console.log(`Success rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`);
-                
-                // If you want to show this in the UI, uncomment and customize this:
-                /*
-                const statsElement = document.getElementById('game-stats');
-                if (statsElement) {
-                    statsElement.textContent = `Success: ${successRate}%`;
+                // Update stats display
+                const statsDisplay = document.getElementById('stats-display');
+                if (statsDisplay) {
+                    statsDisplay.textContent = `Success Rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`;
                 }
-                */
+                
+                // Update mode UI to refresh all displays
+                updateModeUI();
             }
             
             // Event handlers
@@ -1752,11 +1862,12 @@
                     // Add special styling for random mode
                     event.target.classList.add('active-random');
                 } else {
-                    selectedBucket = parseInt(event.target.textContent);
+                    selectedBucket = parseInt(event.target.dataset.bucket || event.target.textContent);
                 }
                 
-                // Update controls based on selection
+                // Update controls and mode UI
                 updateControls();
+                updateModeUI();
                 
                 // Redraw the game
                 drawGame();
@@ -1801,6 +1912,7 @@
             
             // Initial UI update
             updateControls();
+            updateModeUI();
         });
     </script>
 </body>
