@@ -104,10 +104,15 @@
                 pegOffset: 25,
                 ballRadius: 10,
                 ballColor: '#f72585',
+                ballTrailLength: 5,
+                ballRestitution: 0.85,    // Increased bounciness factor
                 backgroundColor: '#16213e',
                 bucketCount: 5,
-                gravity: 0.2,
-                speedDamping: 0.9
+                gravity: 0.3,             // Increased gravity
+                speedDamping: 0.95,       // Less speed loss on wall collision
+                pathControlStrength: 0.25, // Strength of path guidance (0-1)
+                pathControlRamp: 0.03,    // How much control increases as ball descends
+                pathRandomness: 0.3       // Random factor in ball movement (0-1)
             };
             
             // Game state
@@ -119,6 +124,9 @@
             let pegLocations = [];
             let bucketLocations = [];
             let ball = null;
+            let ballTrail = [];
+            let collisionHistory = [];
+            let targetBucket = null;
             
             // Resize the canvas to maintain proper size and aspect ratio
             function resizeCanvas() {
@@ -260,33 +268,225 @@
                 });
             }
             
-            // Draw the ball if it exists
+            // Draw the ball and its trail effects
             function drawBall() {
                 if (!ball) return;
                 
+                // Draw ball trail for motion blur effect
+                if (ballTrail.length > 0) {
+                    for (let i = 0; i < ballTrail.length; i++) {
+                        const trailPoint = ballTrail[i];
+                        const alpha = 0.3 * (i / ballTrail.length);
+                        const trailRadius = ball.radius * (0.7 + (i / ballTrail.length) * 0.3);
+                        
+                        ctx.beginPath();
+                        ctx.arc(trailPoint.x, trailPoint.y, trailRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(247, 37, 133, ${alpha})`;
+                        ctx.fill();
+                    }
+                }
+                
+                // Draw ball itself with base color
                 ctx.beginPath();
                 ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
                 ctx.fillStyle = ball.color;
                 ctx.fill();
                 
-                // Add subtle gradient for 3D effect
-                const gradientSize = ball.radius * 0.7;
-                const ballGradient = ctx.createRadialGradient(
-                    ball.x - gradientSize, ball.y - gradientSize, 0,
-                    ball.x, ball.y, ball.radius
-                );
-                ballGradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-                ballGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                
+                // Add highlight effect without using gradient that might make it look white
                 ctx.beginPath();
-                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-                ctx.fillStyle = ballGradient;
+                const highlightRadius = ball.radius * 0.3;
+                ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
                 ctx.fill();
+                
+                // Draw sparkle effect on recent collisions
+                collisionHistory.forEach(collision => {
+                    if (collision.age < 5) {
+                        const sparkRadius = ball.radius * 0.8 * (1 - collision.age / 5);
+                        const sparkAlpha = 0.8 * (1 - collision.age / 5);
+                        
+                        ctx.beginPath();
+                        ctx.arc(collision.x, collision.y, sparkRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${sparkAlpha})`;
+                        ctx.fill();
+                    }
+                    collision.age++;
+                });
+                
+                // Remove old collision effects
+                collisionHistory = collisionHistory.filter(c => c.age <= 5);
+            }
+            
+            // Add a position to the ball trail
+            function updateBallTrail() {
+                if (!ball) return;
+                
+                // Add current position to trail
+                ballTrail.unshift({ x: ball.x, y: ball.y });
+                
+                // Limit trail length
+                if (ballTrail.length > GAME_CONFIG.ballTrailLength) {
+                    ballTrail.pop();
+                }
+            }
+            
+            // Check for collisions between ball and pegs
+            function checkPegCollisions() {
+                if (!ball) return;
+                
+                let hasCollided = false;
+                
+                for (const peg of pegLocations) {
+                    // Calculate distance between ball and peg centers
+                    const dx = ball.x - peg.x;
+                    const dy = ball.y - peg.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Check if collision occurred
+                    const minDistance = ball.radius + peg.radius;
+                    if (distance < minDistance) {
+                        hasCollided = true;
+                        
+                        // Calculate collision response
+                        const angle = Math.atan2(dy, dx);
+                        
+                        // Move ball outside of collision more forcefully
+                        const overlap = minDistance - distance + 1; // Add 1px extra to prevent sticking
+                        ball.x += Math.cos(angle) * overlap;
+                        ball.y += Math.sin(angle) * overlap;
+                        
+                        // Calculate new velocity after bounce
+                        const speed = Math.sqrt(ball.velocityX * ball.velocityX + ball.velocityY * ball.velocityY);
+                        const incomingAngle = Math.atan2(ball.velocityY, ball.velocityX);
+                        const reflectionAngle = 2 * angle - incomingAngle;
+                        
+                        // Add randomness to reflection
+                        const randomFactor = (Math.random() - 0.5) * GAME_CONFIG.pathRandomness;
+                        const finalAngle = reflectionAngle + randomFactor;
+                        
+                        // Set new velocity with higher minimum speed guarantee
+                        const newSpeed = Math.max(speed * GAME_CONFIG.ballRestitution, 3.0);
+                        ball.velocityX = Math.cos(finalAngle) * newSpeed;
+                        ball.velocityY = Math.sin(finalAngle) * newSpeed;
+                        
+                        // Add a minimum vertical velocity to prevent horizontal sticking
+                        if (Math.abs(ball.velocityY) < 0.5) {
+                            const verticalBoost = Math.random() * 0.5 + 0.5; // 0.5 to 1.0
+                            ball.velocityY += ball.velocityY >= 0 ? verticalBoost : -verticalBoost;
+                        }
+                        
+                        // Add to collision history for visual effects
+                        collisionHistory.push({
+                            x: ball.x,
+                            y: ball.y,
+                            age: 0
+                        });
+                        
+                        // Small audio feedback could be added here
+                    }
+                }
+            }
+            
+            // Check if ball landed in a bucket
+            function checkBucketLanding() {
+                if (!ball) return false;
+                
+                // Only check when ball is in the lower part of the screen
+                if (ball.y < canvas.height * 0.85) return false;
+                
+                for (let i = 0; i < bucketLocations.length; i++) {
+                    const bucket = bucketLocations[i];
+                    
+                    // Check if ball is within bucket boundaries
+                    if (
+                        ball.x > bucket.x - bucket.width/2 &&
+                        ball.x < bucket.x + bucket.width/2 &&
+                        ball.y > bucket.y &&
+                        ball.y < bucket.y + bucket.height
+                    ) {
+                        // Ball landed in a bucket
+                        const landedInTargetBucket = (i + 1) === targetBucket;
+                        
+                        // Visual feedback for landing
+                        ball.velocityX = 0;
+                        ball.velocityY = 0;
+                        
+                        // Create a burst of collision effects
+                        for (let j = 0; j < 10; j++) {
+                            const angle = Math.random() * Math.PI * 2;
+                            const distance = Math.random() * bucket.width * 0.3;
+                            collisionHistory.push({
+                                x: ball.x + Math.cos(angle) * distance,
+                                y: ball.y + Math.sin(angle) * distance,
+                                age: Math.floor(Math.random() * 3)
+                            });
+                        }
+                        
+                        // End game after a short delay
+                        setTimeout(() => {
+                            isGameActive = false;
+                            dropButton.disabled = false;
+                            cancelAnimationFrame(animationFrameId);
+                            
+                            // Show result notification - this could be enhanced
+                            if (landedInTargetBucket) {
+                                console.log('Ball landed in the target bucket!');
+                            } else {
+                                console.log(`Ball landed in bucket ${i+1} instead of ${targetBucket}`);
+                            }
+                        }, 500);
+                        
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            // Apply subtle guidance to direct the ball towards the target bucket
+            function guideBallPath() {
+                if (!ball || !targetBucket || !isGameActive) return;
+                
+                // Get target bucket
+                const target = bucketLocations[targetBucket - 1];
+                
+                // Calculate horizontal distance to target
+                const dx = target.x - ball.x;
+                
+                // Calculate guidance strength based on vertical position (increases as ball falls)
+                const verticalProgress = (ball.y / canvas.height);
+                let guidanceStrength = GAME_CONFIG.pathControlStrength + 
+                                     (verticalProgress * GAME_CONFIG.pathControlRamp);
+                                     
+                // Cap guidance strength
+                guidanceStrength = Math.min(guidanceStrength, 0.8);
+                
+                // Apply stronger horizontal force toward target bucket (increased from 0.0005 to 0.001)
+                ball.velocityX += dx * 0.001 * guidanceStrength * deltaTime;
+                
+                // Add small random variations to make movement look natural
+                const randomX = (Math.random() - 0.5) * 0.05 * GAME_CONFIG.pathRandomness;
+                ball.velocityX += randomX;
+                
+                // Add a minimum velocity check to prevent the ball from moving too slowly
+                const currentSpeed = Math.sqrt(ball.velocityX * ball.velocityX + ball.velocityY * ball.velocityY);
+                if (currentSpeed < 1.5) {
+                    // Scale up the velocity while preserving direction
+                    const factor = 1.5 / currentSpeed;
+                    ball.velocityX *= factor;
+                    ball.velocityY *= factor;
+                }
             }
             
             // Update ball physics
             function updateBall(deltaTime) {
                 if (!ball || !isGameActive) return;
+                
+                // Update ball trail
+                updateBallTrail();
+                
+                // Apply guidance toward target bucket
+                guideBallPath();
                 
                 // Apply gravity
                 ball.velocityY += GAME_CONFIG.gravity * deltaTime;
@@ -295,16 +495,26 @@
                 ball.x += ball.velocityX * deltaTime;
                 ball.y += ball.velocityY * deltaTime;
                 
+                // Check for collisions with pegs
+                checkPegCollisions();
+                
+                // Check if ball landed in a bucket
+                if (checkBucketLanding()) {
+                    return; // Ball landed, stop physics updates
+                }
+                
                 // Handle wall collisions
                 if (ball.x - ball.radius < 0) {
                     ball.x = ball.radius;
                     ball.velocityX = -ball.velocityX * GAME_CONFIG.speedDamping;
+                    collisionHistory.push({ x: ball.x, y: ball.y, age: 0 });
                 } else if (ball.x + ball.radius > canvas.width) {
                     ball.x = canvas.width - ball.radius;
                     ball.velocityX = -ball.velocityX * GAME_CONFIG.speedDamping;
+                    collisionHistory.push({ x: ball.x, y: ball.y, age: 0 });
                 }
                 
-                // Check if ball reached bottom
+                // Check if ball fell out of bounds
                 if (ball.y - ball.radius > canvas.height) {
                     // Reset game state
                     isGameActive = false;
@@ -322,21 +532,80 @@
                 drawGame();
             }
             
-            // Create the ball at the top of the screen
-            function createBall() {
-                // If random mode is selected, choose a random bucket
-                if (selectedBucket === 'random') {
-                    selectedBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+            // Get initial ball position for reaching target bucket
+            function calculateInitialBallPosition() {
+                // Target bucket to aim for
+                if (targetBucket === null) {
+                    throw new Error("Target bucket is not set");
                 }
                 
+                // Base position in the center
+                let xPos = canvas.width / 2;
+                
+                // Calculate small offset based on target bucket
+                // This gives the ball a slight initial bias toward the target
+                const bucketOffset = targetBucket - Math.ceil(GAME_CONFIG.bucketCount / 2);
+                const maxOffset = canvas.width * 0.05; // 5% of canvas width max
+                const initialOffset = bucketOffset * (maxOffset / Math.ceil(GAME_CONFIG.bucketCount / 2));
+                
+                // Add small randomness to make it look natural
+                const randomFactor = (Math.random() - 0.5) * (canvas.width * 0.02);
+                xPos += initialOffset + randomFactor;
+                
+                // Ensure within bounds
+                xPos = Math.max(GAME_CONFIG.ballRadius, Math.min(canvas.width - GAME_CONFIG.ballRadius, xPos));
+                
+                return xPos;
+            }
+            
+            // Create the ball at the top of the screen
+            function createBall() {
+                // Clear previous state
+                ballTrail = [];
+                collisionHistory = [];
+                
+                // If random mode is selected, choose a random bucket
+                if (selectedBucket === 'random') {
+                    targetBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+                } else {
+                    targetBucket = selectedBucket;
+                }
+                
+                // Calculate starting position
+                const initialX = calculateInitialBallPosition();
+                
+                // Create ball with initial velocity
                 ball = {
-                    x: canvas.width / 2,
+                    x: initialX,
                     y: canvas.height * 0.05,
                     radius: GAME_CONFIG.ballRadius,
                     color: GAME_CONFIG.ballColor,
-                    velocityX: 0,
-                    velocityY: 0
+                    velocityX: (Math.random() - 0.5) * 1.5, // Increased initial velocity
+                    velocityY: 1.0, // Add initial downward velocity
+                    // Track additional state
+                    targetBucket: targetBucket,
+                    collisionCount: 0,
+                    // For visual effects
+                    rotation: 0,
+                    rotationSpeed: (Math.random() - 0.5) * 0.2
                 };
+            }
+            
+            // Reset the ball to the top of the screen
+            function resetBall() {
+                ball = null;
+                ballTrail = [];
+                collisionHistory = [];
+                targetBucket = null;
+                isGameActive = false;
+                dropButton.disabled = false;
+                
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                
+                drawGame();
             }
             
             // Draw the game elements on the canvas
@@ -400,14 +669,7 @@
             }
             
             function handleReset() {
-                isGameActive = false;
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                }
-                
-                ball = null;
-                dropButton.disabled = false;
-                drawGame();
+                resetBall();
             }
             
             function addEventListeners() {
