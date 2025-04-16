@@ -95,9 +95,30 @@
             const dropButton = document.getElementById('drop');
             const resetButton = document.getElementById('reset');
             
+            // Game configuration
+            const GAME_CONFIG = {
+                pegRadius: 6,
+                pegColor: '#f8f9fa',
+                pegRows: 12,
+                pegSpacing: 50,
+                pegOffset: 25,
+                ballRadius: 10,
+                ballColor: '#f72585',
+                backgroundColor: '#16213e',
+                bucketCount: 5,
+                gravity: 0.2,
+                speedDamping: 0.9
+            };
+            
+            // Game state
             let selectedBucket = null;
             let isGameActive = false;
             let animationFrameId = null;
+            let lastTimestamp = 0;
+            let deltaTime = 0;
+            let pegLocations = [];
+            let bucketLocations = [];
+            let ball = null;
             
             // Resize the canvas to maintain proper size and aspect ratio
             function resizeCanvas() {
@@ -109,32 +130,237 @@
                 canvas.width = width;
                 canvas.height = height;
                 
+                // Recalculate game dimensions based on canvas size
+                GAME_CONFIG.pegSpacing = Math.floor(width / 16);
+                GAME_CONFIG.pegRadius = Math.floor(width / 100);
+                GAME_CONFIG.ballRadius = Math.floor(width / 60);
+                
+                // Regenerate pegs and buckets for new canvas size
+                initPegs();
+                initBuckets();
+                
                 // Redraw if necessary
                 if (!isGameActive) {
                     drawGame();
                 }
             }
             
+            // Initialize peg positions in a triangular grid
+            function initPegs() {
+                pegLocations = [];
+                const startX = canvas.width / 2;
+                const startY = canvas.height * 0.15;
+                const horizontalSpacing = GAME_CONFIG.pegSpacing;
+                const verticalSpacing = GAME_CONFIG.pegSpacing * 0.866; // approx. sqrt(3)/2
+                
+                for (let row = 0; row < GAME_CONFIG.pegRows; row++) {
+                    const pegsInRow = row + 5;
+                    const rowWidth = (pegsInRow - 1) * horizontalSpacing;
+                    const rowStartX = startX - rowWidth / 2;
+                    
+                    for (let col = 0; col < pegsInRow; col++) {
+                        pegLocations.push({
+                            x: rowStartX + col * horizontalSpacing,
+                            y: startY + row * verticalSpacing,
+                            radius: GAME_CONFIG.pegRadius
+                        });
+                    }
+                }
+            }
+            
+            // Initialize bucket positions
+            function initBuckets() {
+                bucketLocations = [];
+                const bucketWidth = canvas.width / (GAME_CONFIG.bucketCount + 1);
+                const bucketY = canvas.height * 0.9;
+                const bucketHeight = canvas.height * 0.1;
+                
+                for (let i = 0; i < GAME_CONFIG.bucketCount; i++) {
+                    bucketLocations.push({
+                        x: (i + 1) * bucketWidth,
+                        y: bucketY,
+                        width: bucketWidth,
+                        height: bucketHeight,
+                        number: i + 1
+                    });
+                }
+            }
+            
+            // Draw background with gradient
+            function drawBackground() {
+                // Create gradient
+                const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                gradient.addColorStop(0, '#0f172a');
+                gradient.addColorStop(1, '#1e293b');
+                
+                // Fill background
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw grid lines for visual effect
+                ctx.strokeStyle = 'rgba(248, 249, 250, 0.05)';
+                ctx.lineWidth = 1;
+                
+                // Vertical lines
+                const lineSpacing = canvas.width / 20;
+                for (let x = 0; x < canvas.width; x += lineSpacing) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    ctx.stroke();
+                }
+                
+                // Horizontal lines
+                for (let y = 0; y < canvas.height; y += lineSpacing) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw all pegs
+            function drawPegs() {
+                pegLocations.forEach(peg => {
+                    ctx.beginPath();
+                    ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = GAME_CONFIG.pegColor;
+                    ctx.fill();
+                    
+                    // Add subtle glow effect
+                    ctx.beginPath();
+                    ctx.arc(peg.x, peg.y, peg.radius * 1.5, 0, Math.PI * 2);
+                    const glowGradient = ctx.createRadialGradient(
+                        peg.x, peg.y, peg.radius * 0.5,
+                        peg.x, peg.y, peg.radius * 1.5
+                    );
+                    glowGradient.addColorStop(0, 'rgba(248, 249, 250, 0.3)');
+                    glowGradient.addColorStop(1, 'rgba(248, 249, 250, 0)');
+                    ctx.fillStyle = glowGradient;
+                    ctx.fill();
+                });
+            }
+            
+            // Draw all buckets
+            function drawBuckets() {
+                bucketLocations.forEach((bucket, index) => {
+                    // Draw bucket body
+                    ctx.fillStyle = selectedBucket === index + 1 ? '#f72585' : '#4a4e69';
+                    ctx.fillRect(bucket.x - bucket.width/2, bucket.y, bucket.width, bucket.height);
+                    
+                    // Draw bucket rim
+                    ctx.fillStyle = '#6a6d91';
+                    ctx.fillRect(bucket.x - bucket.width/2, bucket.y, bucket.width, 5);
+                    
+                    // Draw bucket number
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = `${Math.floor(bucket.width / 5)}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(bucket.number.toString(), bucket.x, bucket.y + bucket.height / 2 + 8);
+                });
+            }
+            
+            // Draw the ball if it exists
+            function drawBall() {
+                if (!ball) return;
+                
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = ball.color;
+                ctx.fill();
+                
+                // Add subtle gradient for 3D effect
+                const gradientSize = ball.radius * 0.7;
+                const ballGradient = ctx.createRadialGradient(
+                    ball.x - gradientSize, ball.y - gradientSize, 0,
+                    ball.x, ball.y, ball.radius
+                );
+                ballGradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                ballGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = ballGradient;
+                ctx.fill();
+            }
+            
+            // Update ball physics
+            function updateBall(deltaTime) {
+                if (!ball || !isGameActive) return;
+                
+                // Apply gravity
+                ball.velocityY += GAME_CONFIG.gravity * deltaTime;
+                
+                // Update position based on velocity
+                ball.x += ball.velocityX * deltaTime;
+                ball.y += ball.velocityY * deltaTime;
+                
+                // Handle wall collisions
+                if (ball.x - ball.radius < 0) {
+                    ball.x = ball.radius;
+                    ball.velocityX = -ball.velocityX * GAME_CONFIG.speedDamping;
+                } else if (ball.x + ball.radius > canvas.width) {
+                    ball.x = canvas.width - ball.radius;
+                    ball.velocityX = -ball.velocityX * GAME_CONFIG.speedDamping;
+                }
+                
+                // Check if ball reached bottom
+                if (ball.y - ball.radius > canvas.height) {
+                    // Reset game state
+                    isGameActive = false;
+                    dropButton.disabled = false;
+                    cancelAnimationFrame(animationFrameId);
+                }
+            }
+            
             // Set up initial game state
             function initGame() {
-                // Initialize game objects and properties here
                 resizeCanvas();
+                initPegs();
+                initBuckets();
                 addEventListeners();
                 drawGame();
+            }
+            
+            // Create the ball at the top of the screen
+            function createBall() {
+                // If random mode is selected, choose a random bucket
+                if (selectedBucket === 'random') {
+                    selectedBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+                }
+                
+                ball = {
+                    x: canvas.width / 2,
+                    y: canvas.height * 0.05,
+                    radius: GAME_CONFIG.ballRadius,
+                    color: GAME_CONFIG.ballColor,
+                    velocityX: 0,
+                    velocityY: 0
+                };
             }
             
             // Draw the game elements on the canvas
             function drawGame() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 
-                // Game drawing code will go here
-                // This will include drawing pegs, ball, and buckets
+                drawBackground();
+                drawPegs();
+                drawBuckets();
+                drawBall();
             }
             
-            // Game loop
-            function gameLoop() {
+            // Game loop with timestamp for smooth animation
+            function gameLoop(timestamp) {
+                if (!lastTimestamp) {
+                    lastTimestamp = timestamp;
+                }
+                
+                // Calculate time difference between frames
+                deltaTime = (timestamp - lastTimestamp) / 16; // Normalize to ~60fps
+                lastTimestamp = timestamp;
+                
                 // Update game physics
-                // Update positions and handle collisions
+                updateBall(deltaTime);
                 
                 // Draw everything
                 drawGame();
@@ -157,6 +383,8 @@
                 } else {
                     selectedBucket = parseInt(event.target.textContent);
                 }
+                
+                drawGame();
             }
             
             function handleDropBall() {
@@ -164,11 +392,11 @@
                 
                 isGameActive = true;
                 dropButton.disabled = true;
+                lastTimestamp = 0;
                 
                 // Initialize ball and start game loop
-                // Code for ball creation and initialization will go here
-                
-                gameLoop();
+                createBall();
+                animationFrameId = requestAnimationFrame(gameLoop);
             }
             
             function handleReset() {
@@ -177,6 +405,7 @@
                     cancelAnimationFrame(animationFrameId);
                 }
                 
+                ball = null;
                 dropButton.disabled = false;
                 drawGame();
             }
