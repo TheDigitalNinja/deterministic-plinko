@@ -97,22 +97,41 @@
             
             // Game configuration
             const GAME_CONFIG = {
+                // Peg configuration
                 pegRadius: 6,
                 pegColor: '#f8f9fa',
-                pegRows: 12,
-                pegSpacing: 50,
-                pegOffset: 25,
+                pegRows: 12,           // Number of rows of pegs
+                pegSpacing: 50,        // Horizontal spacing between pegs
+                pegOffset: 25,         // Additional stagger offset
+                pegGlowIntensity: 0.3, // Intensity of peg glow effect
+                pegHeatmap: false,     // Whether to use heatmap visualization
+                pegInfluenceRadius: 80, // How far a peg's path influence extends
+                
+                // Path influence zones
+                pathZones: [
+                    // Zones are defined by start/end rows and preferred direction 
+                    // direction: -1=left, 0=neutral, 1=right
+                    { startRow: 0, endRow: 4, direction: 0, strength: 0.5 },
+                    { startRow: 5, endRow: 8, direction: 0, strength: 0.7 },
+                    { startRow: 9, endRow: 12, direction: 0, strength: 1.0 }
+                ],
+                
+                // Ball configuration
                 ballRadius: 10,
                 ballColor: '#f72585',
                 ballTrailLength: 5,
-                ballRestitution: 0.85,    // Increased bounciness factor
+                ballRestitution: 0.85, // Bounciness factor
+                
+                // Physics
                 backgroundColor: '#16213e',
                 bucketCount: 5,
-                gravity: 0.3,             // Increased gravity
-                speedDamping: 0.95,       // Less speed loss on wall collision
-                pathControlStrength: 0.25, // Strength of path guidance (0-1)
-                pathControlRamp: 0.03,    // How much control increases as ball descends
-                pathRandomness: 0.3       // Random factor in ball movement (0-1)
+                gravity: 0.3,
+                speedDamping: 0.95,    // Speed loss on wall collision
+                
+                // Path control
+                pathControlStrength: 0.25, // Base strength of guidance (0-1)
+                pathControlRamp: 0.03,     // How much control increases as ball descends
+                pathRandomness: 0.3        // Random factor in ball movement (0-1)
             };
             
             // Game state
@@ -122,11 +141,13 @@
             let lastTimestamp = 0;
             let deltaTime = 0;
             let pegLocations = [];
+            let pegInfluenceMap = {};
             let bucketLocations = [];
             let ball = null;
             let ballTrail = [];
             let collisionHistory = [];
             let targetBucket = null;
+            let pegPathData = {}; // Stores peg guidance data for visualization
             
             // Resize the canvas to maintain proper size and aspect ratio
             function resizeCanvas() {
@@ -153,7 +174,89 @@
                 }
             }
             
-            // Initialize peg positions in a triangular grid
+            // Get influence strength for a peg based on its row
+            function getPegZoneInfluence(row) {
+                for (const zone of GAME_CONFIG.pathZones) {
+                    if (row >= zone.startRow && row <= zone.endRow) {
+                        return {
+                            direction: zone.direction,
+                            strength: zone.strength
+                        };
+                    }
+                }
+                return { direction: 0, strength: 0.5 }; // Default if no zone matches
+            }
+            
+            // Calculate peg influence value for guiding ball to target bucket
+            function calculatePegInfluence(pegIndex, targetBucketNum) {
+                const peg = pegLocations[pegIndex];
+                const targetBucket = bucketLocations[targetBucketNum - 1];
+                
+                // Calculate horizontal distance to bucket
+                const dx = targetBucket.x - peg.x;
+                
+                // Get the row number - we need to know how far down the board we are
+                let rowIndex = 0;
+                for (let i = 0; i < pegIndex; i++) {
+                    if (pegLocations[i].y < peg.y && 
+                        Math.abs(pegLocations[i].y - peg.y) < GAME_CONFIG.pegSpacing) {
+                        rowIndex++;
+                        break;
+                    }
+                }
+                
+                // Get the zone influence
+                const zoneInfo = getPegZoneInfluence(rowIndex);
+                
+                // Calculate influence strength based on distance and zone
+                const distanceRatio = Math.abs(dx) / canvas.width;
+                const directionBias = Math.sign(dx);
+                
+                // Direction bias: +1 means peg should influence ball to go right
+                // Direction bias: -1 means peg should influence ball to go left
+                const influenceDirection = directionBias;
+                
+                return {
+                    direction: influenceDirection,
+                    strength: zoneInfo.strength * (1 - distanceRatio * 0.5)
+                };
+            }
+            
+            // Initialize the influence map for each peg for each target bucket
+            function initPegInfluenceMap() {
+                pegInfluenceMap = {};
+                
+                // For each target bucket
+                for (let bucketNum = 1; bucketNum <= GAME_CONFIG.bucketCount; bucketNum++) {
+                    pegInfluenceMap[bucketNum] = [];
+                    
+                    // Calculate influence for each peg
+                    for (let pegIndex = 0; pegIndex < pegLocations.length; pegIndex++) {
+                        pegInfluenceMap[bucketNum][pegIndex] = calculatePegInfluence(pegIndex, bucketNum);
+                    }
+                }
+            }
+            
+            // Generate peg display data for visualization
+            function generatePegPathData() {
+                pegPathData = {};
+                
+                if (!targetBucket) return;
+                
+                const bucketInfluenceMap = pegInfluenceMap[targetBucket];
+                if (!bucketInfluenceMap) return;
+                
+                // Store the data keyed by peg index
+                for (let i = 0; i < pegLocations.length; i++) {
+                    pegPathData[i] = {
+                        influence: bucketInfluenceMap[i],
+                        isActive: false,  // Will be set to true when ball is near
+                        activationTime: 0 // For animation effects
+                    };
+                }
+            }
+            
+            // Initialize peg positions in a triangular grid with influence for path guidance
             function initPegs() {
                 pegLocations = [];
                 const startX = canvas.width / 2;
@@ -161,19 +264,34 @@
                 const horizontalSpacing = GAME_CONFIG.pegSpacing;
                 const verticalSpacing = GAME_CONFIG.pegSpacing * 0.866; // approx. sqrt(3)/2
                 
+                // Generate peg positions in staggered rows (triangular grid)
                 for (let row = 0; row < GAME_CONFIG.pegRows; row++) {
                     const pegsInRow = row + 5;
                     const rowWidth = (pegsInRow - 1) * horizontalSpacing;
                     const rowStartX = startX - rowWidth / 2;
                     
+                    // Offset every other row for triangular pattern
+                    const xOffset = (row % 2 === 0) ? 0 : horizontalSpacing / 2;
+                    
                     for (let col = 0; col < pegsInRow; col++) {
+                        // Create peg with position, visual, and physics properties
                         pegLocations.push({
-                            x: rowStartX + col * horizontalSpacing,
+                            x: rowStartX + col * horizontalSpacing + xOffset,
                             y: startY + row * verticalSpacing,
-                            radius: GAME_CONFIG.pegRadius
+                            radius: GAME_CONFIG.pegRadius,
+                            row: row,
+                            col: col,
+                            // For visualization and effects
+                            glowIntensity: GAME_CONFIG.pegGlowIntensity,
+                            // For debugging
+                            influenceDirection: 0,
+                            influenceStrength: 0
                         });
                     }
                 }
+                
+                // Initialize the influence map
+                initPegInfluenceMap();
             }
             
             // Initialize bucket positions
@@ -227,25 +345,149 @@
                 }
             }
             
-            // Draw all pegs
+            // Get color for a peg based on its influence
+            function getPegColor(pegIndex) {
+                // Default color if no guidance is active
+                if (!targetBucket || !pegPathData[pegIndex]) {
+                    return GAME_CONFIG.pegColor;
+                }
+                
+                const pegInfo = pegPathData[pegIndex];
+                
+                // If heatmap visualization is enabled, show directional influence
+                if (GAME_CONFIG.pegHeatmap && pegInfo.isActive) {
+                    const influence = pegInfo.influence;
+                    
+                    // Direction: -1 (left/blue) to 0 (neutral/white) to 1 (right/red)
+                    if (influence.direction < 0) {
+                        // Blue for leftward influence
+                        const intensity = Math.abs(influence.strength * 255);
+                        return `rgb(255, ${255 - intensity * 0.7}, ${255 - intensity})`;
+                    } else if (influence.direction > 0) {
+                        // Red for rightward influence
+                        const intensity = Math.abs(influence.strength * 255);
+                        return `rgb(${255}, ${255 - intensity * 0.7}, ${255 - intensity})`;
+                    } 
+                    
+                    // White for neutral
+                    return '#ffffff';
+                }
+                
+                // Standard color with no heatmap
+                return GAME_CONFIG.pegColor;
+            }
+            
+            // Check if a peg is active (ball is nearby)
+            function updateActivePegs() {
+                if (!ball || !pegPathData) return;
+                
+                // Update active state of pegs based on ball proximity
+                for (let i = 0; i < pegLocations.length; i++) {
+                    const peg = pegLocations[i];
+                    const pegData = pegPathData[i];
+                    
+                    if (!pegData) continue;
+                    
+                    // Calculate distance from ball to peg
+                    const dx = ball.x - peg.x;
+                    const dy = ball.y - peg.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Activate pegs within influence radius
+                    pegData.isActive = distance < GAME_CONFIG.pegInfluenceRadius;
+                    
+                    // Set activation time for animation
+                    if (pegData.isActive && pegData.activationTime === 0) {
+                        pegData.activationTime = Date.now();
+                    } else if (!pegData.isActive) {
+                        pegData.activationTime = 0;
+                    }
+                }
+            }
+            
+            // Draw all pegs with influence visualization
             function drawPegs() {
-                pegLocations.forEach(peg => {
+                // Update active pegs if ball exists
+                if (ball) {
+                    updateActivePegs();
+                }
+                
+                // Draw each peg
+                pegLocations.forEach((peg, index) => {
+                    // Get the peg color based on influence
+                    const pegColor = getPegColor(index);
+                    
+                    // Draw the peg body
                     ctx.beginPath();
                     ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = GAME_CONFIG.pegColor;
+                    ctx.fillStyle = pegColor;
                     ctx.fill();
                     
-                    // Add subtle glow effect
+                    // Add outer stroke
                     ctx.beginPath();
-                    ctx.arc(peg.x, peg.y, peg.radius * 1.5, 0, Math.PI * 2);
+                    ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    // Add glow effect
+                    let glowIntensity = peg.glowIntensity;
+                    
+                    // Enhanced glow for active pegs
+                    const pegData = pegPathData[index];
+                    if (pegData && pegData.isActive) {
+                        // Pulse effect based on activation time
+                        const elapsed = Date.now() - pegData.activationTime;
+                        const pulseIntensity = 0.3 + 0.2 * Math.sin(elapsed / 200); // Oscillating intensity
+                        glowIntensity = Math.max(glowIntensity, pulseIntensity);
+                    }
+                    
+                    // Draw the glow
+                    ctx.beginPath();
+                    ctx.arc(peg.x, peg.y, peg.radius * 1.8, 0, Math.PI * 2);
+                    
+                    // Create radial gradient for glow effect
                     const glowGradient = ctx.createRadialGradient(
                         peg.x, peg.y, peg.radius * 0.5,
-                        peg.x, peg.y, peg.radius * 1.5
+                        peg.x, peg.y, peg.radius * 1.8
                     );
-                    glowGradient.addColorStop(0, 'rgba(248, 249, 250, 0.3)');
-                    glowGradient.addColorStop(1, 'rgba(248, 249, 250, 0)');
+                    
+                    // Adjust color based on influence if needed
+                    let glowColor = 'rgba(248, 249, 250, ';
+                    if (pegData && pegData.isActive && GAME_CONFIG.pegHeatmap) {
+                        const influence = pegData.influence;
+                        if (influence.direction < 0) {
+                            glowColor = 'rgba(100, 150, 255, '; // Blue for left
+                        } else if (influence.direction > 0) {
+                            glowColor = 'rgba(255, 100, 100, '; // Red for right
+                        }
+                    }
+                    
+                    glowGradient.addColorStop(0, glowColor + glowIntensity + ')');
+                    glowGradient.addColorStop(1, glowColor + '0)');
+                    
                     ctx.fillStyle = glowGradient;
                     ctx.fill();
+                    
+                    // Draw influence direction indicators (optional for debugging)
+                    if (GAME_CONFIG.pegHeatmap && pegData && pegData.isActive) {
+                        const influence = pegData.influence;
+                        
+                        if (influence.direction !== 0) {
+                            // Draw direction indicator
+                            const arrowLength = peg.radius * 2 * influence.strength;
+                            const arrowX = peg.x + arrowLength * influence.direction;
+                            
+                            ctx.beginPath();
+                            ctx.moveTo(peg.x, peg.y);
+                            ctx.lineTo(arrowX, peg.y);
+                            
+                            ctx.strokeStyle = influence.direction < 0 ? 
+                                'rgba(100, 150, 255, 0.7)' : 'rgba(255, 100, 100, 0.7)';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                        }
+                    }
                 });
             }
             
@@ -443,14 +685,63 @@
                 return false;
             }
             
-            // Apply subtle guidance to direct the ball towards the target bucket
+            // Calculate peg influence on ball at current position
+            function calculateCurrentPegInfluence() {
+                if (!ball || !targetBucket || !pegPathData) return { x: 0, y: 0 };
+                
+                let totalInfluenceX = 0;
+                let totalInfluenceY = 0;
+                let totalWeight = 0;
+                
+                // Check each peg's influence
+                for (let i = 0; i < pegLocations.length; i++) {
+                    const peg = pegLocations[i];
+                    const pegData = pegPathData[i];
+                    
+                    if (!pegData) continue;
+                    
+                    // Calculate distance from ball to peg
+                    const dx = ball.x - peg.x;
+                    const dy = ball.y - peg.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Skip pegs that are too far away
+                    if (distance > GAME_CONFIG.pegInfluenceRadius) continue;
+                    
+                    // Calculate influence weight based on distance (closer = stronger influence)
+                    const weight = 1 - (distance / GAME_CONFIG.pegInfluenceRadius);
+                    const influence = pegData.influence;
+                    
+                    // Add weighted influence to total
+                    totalInfluenceX += influence.direction * influence.strength * weight;
+                    totalWeight += weight;
+                    
+                    // Mark this peg as active for visualization
+                    pegData.isActive = true;
+                    if (pegData.activationTime === 0) {
+                        pegData.activationTime = Date.now();
+                    }
+                }
+                
+                // Normalize influence
+                if (totalWeight > 0) {
+                    return {
+                        x: totalInfluenceX / totalWeight,
+                        y: 0  // For now, only horizontal influence
+                    };
+                }
+                
+                return { x: 0, y: 0 };
+            }
+            
+            // Apply guidance to direct the ball towards the target bucket
             function guideBallPath() {
                 if (!ball || !targetBucket || !isGameActive) return;
                 
                 // Get target bucket
                 const target = bucketLocations[targetBucket - 1];
                 
-                // Calculate horizontal distance to target
+                // Calculate direct influence - pulling toward target bucket
                 const dx = target.x - ball.x;
                 
                 // Calculate guidance strength based on vertical position (increases as ball falls)
@@ -458,11 +749,18 @@
                 let guidanceStrength = GAME_CONFIG.pathControlStrength + 
                                      (verticalProgress * GAME_CONFIG.pathControlRamp);
                                      
-                // Cap guidance strength
+                // Cap direct guidance strength
                 guidanceStrength = Math.min(guidanceStrength, 0.8);
                 
-                // Apply stronger horizontal force toward target bucket (increased from 0.0005 to 0.001)
-                ball.velocityX += dx * 0.001 * guidanceStrength * deltaTime;
+                // Apply direct guidance - pull toward bucket
+                const directInfluence = dx * 0.0005 * guidanceStrength * deltaTime;
+                
+                // Get peg-based influence - guidance through the peg field
+                const pegInfluence = calculateCurrentPegInfluence();
+                const pegFactor = 0.02 * deltaTime; // Adjust strength of peg influence
+                
+                // Combine both influences
+                ball.velocityX += directInfluence + (pegInfluence.x * pegFactor);
                 
                 // Add small random variations to make movement look natural
                 const randomX = (Math.random() - 0.5) * 0.05 * GAME_CONFIG.pathRandomness;
@@ -570,6 +868,9 @@
                 } else {
                     targetBucket = selectedBucket;
                 }
+                
+                // Generate peg path data for the selected target bucket
+                generatePegPathData();
                 
                 // Calculate starting position
                 const initialX = calculateInitialBallPosition();
