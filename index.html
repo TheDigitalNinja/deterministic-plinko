@@ -481,45 +481,25 @@
             function initBuckets() {
                 bucketLocations = [];
                 
-                // Center of canvas - needed for bucket positioning
-                const startX = canvas.width / 2;
-                
                 // Bucket dimensions
                 const bucketY = canvas.height * (1 - GAME_CONFIG.bucketDepth);
                 const bucketHeight = canvas.height * GAME_CONFIG.bucketDepth;
                 
-                // Get the bottom row of pegs to align buckets with
-                const lastRowIndex = GAME_CONFIG.pegRows - 1;
-                const bottomRowPegs = Math.min(lastRowIndex + 1, 11); // Same as maxPegs from initPegs
-                
-                // Calculate the bucket width to match the spacing of the pegs
-                const bucketWidth = GAME_CONFIG.pegSpacing;
-                
-                // We want GAME_CONFIG.bucketCount buckets evenly spaced 
-                // to match the bottom row of the triangle
-                const bottomRowWidth = (bottomRowPegs - 1) * GAME_CONFIG.pegSpacing;
-                const leftEdge = startX - bottomRowWidth / 2;
-                
-                // Calculate spacing between bucket centers
-                const bucketSpacing = bottomRowWidth / (GAME_CONFIG.bucketCount - 1);
+                // Simple approach: 5 equal buckets across the entire canvas width
+                const bucketWidth = canvas.width / GAME_CONFIG.bucketCount;
                 
                 // Position the buckets
                 for (let i = 0; i < GAME_CONFIG.bucketCount; i++) {
                     // Get the color for this bucket (or use fallback)
                     const bucketColor = GAME_CONFIG.bucketColors[i] || '#4a4e69';
                     
-                    // Calculate bucket position
-                    // If we have 5 buckets and 11 pegs, we want buckets at positions 0, 2.5, 5, 7.5, 10
-                    const bucketCenterX = leftEdge + i * bucketSpacing;
-                    
-                    // Add subtle variation to bucket sizes to make them look more natural
-                    const widthVariation = 1 + (Math.random() * 0.08 - 0.04); // +/- 4%
-                    const adjustedWidth = bucketWidth * widthVariation;
+                    // Calculate bucket position - center of each bucket
+                    const bucketCenterX = (i + 0.5) * bucketWidth;
                     
                     bucketLocations.push({
-                        x: bucketCenterX, // Center of bucket between pegs
-                        y: bucketY,
-                        width: adjustedWidth,
+                        x: bucketCenterX,
+                        y: bucketY, 
+                        width: bucketWidth,
                         height: bucketHeight,
                         number: i + 1,
                         color: bucketColor,
