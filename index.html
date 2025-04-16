@@ -299,10 +299,12 @@
                 speedDamping: 0.95,       // Speed loss on wall collision
                 
                 // Path control
-                pathControlStrength: 0.25, // Base strength of guidance (0-1)
-                pathControlRamp: 0.03,     // How much control increases as ball descends
-                pathRandomness: 0.3,       // Random factor in ball movement (0-1)
-                enforcedPathGuidance: true // If true, increases guidance dramatically near bottom
+                pathControlStrength: 0.4,  // Base strength of guidance (0-1) - increased for reliability
+                pathControlRamp: 0.06,     // How much control increases as ball descends - doubled
+                pathRandomness: 0.2,       // Random factor in ball movement (0-1) - reduced for more control
+                enforcedPathGuidance: true, // If true, increases guidance dramatically near bottom
+                guaranteedLanding: true,    // Ensures ball ALWAYS lands in target bucket
+                enforcementZone: 0.7       // Height threshold (as % of canvas) where strong enforcement begins
             };
             
             // Game state
@@ -435,25 +437,31 @@
                 pegLocations = [];
                 const startX = canvas.width / 2;
                 const startY = canvas.height * 0.15;
-                const horizontalSpacing = GAME_CONFIG.pegSpacing;
-                const verticalSpacing = GAME_CONFIG.pegSpacing * 0.866; // approx. sqrt(3)/2
                 
-                // Create a proper triangular pattern:
+                // Distribute pegs across the full width of the canvas
+                // Calculate proper spacing based on desired number of pegs in bottom row
+                const maxRowPegs = 15; // More pegs in bottom row for full width coverage
+                const horizontalSpacing = canvas.width / (maxRowPegs + 1);
+                const verticalSpacing = horizontalSpacing * 0.866; // approx. sqrt(3)/2
+                
+                // Update the config with the new spacing
+                GAME_CONFIG.pegSpacing = horizontalSpacing;
+                
+                // Create a proper triangular pattern that spans the full width:
                 // Row 0: Center peg at top
                 // Row 1: Two pegs, perfectly centered
                 // Row 2: Three pegs, with center one in middle
-                // Etc.
-                
-                // Maximum pegs in bottom row
-                const maxPegs = Math.min(GAME_CONFIG.pegRows, 11);
+                // Etc. until we reach the maximum row with pegs spanning the full width
                 
                 // Create the peg grid - proper triangle
                 for (let row = 0; row < GAME_CONFIG.pegRows; row++) {
-                    // Pegs in this row - row 0 has 1, row 1 has 2, row 2 has 3, etc.
-                    const pegsInThisRow = Math.min(row + 1, maxPegs);
+                    // Calculate pegs in this row - we want to reach maxRowPegs in the last row
+                    // Use a linear progression from 1 to maxRowPegs
+                    const progressRatio = row / (GAME_CONFIG.pegRows - 1);
+                    const pegsInThisRow = Math.max(1, Math.min(Math.round(1 + progressRatio * (maxRowPegs - 1)), maxRowPegs));
                     
                     // Calculate the starting x-position to center the row
-                    // We need to center the pegs properly to form a triangle
+                    // We want to spread the pegs across most of the canvas width
                     const rowWidth = (pegsInThisRow - 1) * horizontalSpacing;
                     const rowStartX = startX - rowWidth / 2;
                     
@@ -1150,10 +1158,29 @@
                         let randomFactor = (Math.random() - 0.5) * GAME_CONFIG.pathRandomness;
                         
                         // Apply additional bias near the bottom to ensure landing in target bucket
-                        if (GAME_CONFIG.enforcedPathGuidance && ball.y > canvas.height * 0.7) {
-                            const strengthMultiplier = (ball.y - canvas.height * 0.7) / (canvas.height * 0.3);
-                            guidanceModifier *= (1 + strengthMultiplier * 2);
-                            randomFactor *= (1 - strengthMultiplier); // Less randomness near bottom
+                        // Enhanced to guarantee landing in target bucket (legal requirement)
+                        if (GAME_CONFIG.enforcedPathGuidance) {
+                            if (ball.y > canvas.height * GAME_CONFIG.enforcementZone) {
+                                // In the enforcement zone - stronger guidance
+                                const strengthMultiplier = (ball.y - canvas.height * GAME_CONFIG.enforcementZone) / 
+                                                          (canvas.height * (1 - GAME_CONFIG.enforcementZone));
+                                
+                                // Dramatically increase guidance strength near bottom
+                                guidanceModifier *= (1 + strengthMultiplier * 3);
+                                
+                                // Reduce randomness for more control
+                                randomFactor *= (1 - strengthMultiplier * 0.9);
+                                
+                                // Direct intervention for guaranteed landing if extremely close to bottom
+                                if (strengthMultiplier > 0.8) {
+                                    // Get target bucket position
+                                    const target = bucketLocations[targetBucket - 1];
+                                    const dx = target.x - ball.x;
+                                    
+                                    // Add very strong directional bias to ensure landing
+                                    guidanceModifier += Math.sign(dx) * strengthMultiplier * 0.3;
+                                }
+                            }
                         }
                         
                         // Final angle includes reflection, randomness, and guidance
@@ -1298,6 +1325,18 @@
                 
                 // Only check when ball is in the lower part of the screen
                 if (ball.y < canvas.height * 0.85) return false;
+                
+                // FINAL FAILSAFE: If the ball is very low, force it into target bucket
+                // This is absolutely required for legal compliance - no misses allowed
+                if (ball.y > canvas.height * 0.98) {
+                    // Get the target bucket and force ball into it
+                    const targetBucketObj = bucketLocations[targetBucket - 1];
+                    
+                    // Force alignment with target bucket
+                    ball.x = targetBucketObj.x;
+                    
+                    // Prepare to handle as normal bucket landing
+                }
                 
                 for (let i = 0; i < bucketLocations.length; i++) {
                     const bucket = bucketLocations[i];
@@ -1456,9 +1495,43 @@
                 const verticalProgress = (ball.y / canvas.height);
                 let guidanceStrength = GAME_CONFIG.pathControlStrength + 
                                      (verticalProgress * GAME_CONFIG.pathControlRamp);
-                                     
-                // Cap direct guidance strength
-                guidanceStrength = Math.min(guidanceStrength, 0.8);
+                
+                // CRITICAL: Check if we're in the enforcement zone (near bottom of board)
+                // This ensures the ball ALWAYS lands in the correct bucket (legal requirement)
+                if (GAME_CONFIG.guaranteedLanding && verticalProgress > GAME_CONFIG.enforcementZone) {
+                    // Calculate how far into the enforcement zone we are (0 to 1)
+                    const enforcementProgress = (verticalProgress - GAME_CONFIG.enforcementZone) / 
+                                               (1 - GAME_CONFIG.enforcementZone);
+                    
+                    // Exponentially increase guidance as we get closer to buckets
+                    // This makes the path correction look more natural while still guaranteeing the outcome
+                    guidanceStrength = 0.8 + enforcementProgress * 3.0;
+                    
+                    // If we're very close to the bottom, apply direct correction if needed
+                    if (enforcementProgress > 0.8) {
+                        // Calculate bucket width and check if ball is on track for the target
+                        const bucketWidth = target.width;
+                        const bucketLeft = target.x - bucketWidth/2;
+                        const bucketRight = target.x + bucketWidth/2;
+                        
+                        // If we're not heading toward target bucket, adjust velocity more dramatically
+                        // This is our failsafe to ensure the ball ALWAYS lands in the correct bucket
+                        if (ball.x < bucketLeft || ball.x > bucketRight) {
+                            // Apply stronger correction toward bucket center
+                            ball.velocityX = dx * 0.1;
+                            
+                            // If we're extremely close to the bottom and off course
+                            if (enforcementProgress > 0.95) {
+                                // Direct position override - last resort but looks natural
+                                // as a final small correction
+                                ball.x += dx * 0.15;
+                            }
+                        }
+                    }
+                } else {
+                    // Cap normal guidance strength
+                    guidanceStrength = Math.min(guidanceStrength, 0.8);
+                }
                 
                 // Apply direct guidance - pull toward bucket
                 const directInfluence = dx * 0.0005 * guidanceStrength * deltaTime;
@@ -1471,7 +1544,9 @@
                 ball.velocityX += directInfluence + (pegInfluence.x * pegFactor);
                 
                 // Add small random variations to make movement look natural
-                const randomX = (Math.random() - 0.5) * 0.05 * GAME_CONFIG.pathRandomness;
+                // Reduce randomness as we get closer to the bottom for more control
+                const randomFactor = GAME_CONFIG.pathRandomness * (1 - verticalProgress * 0.8);
+                const randomX = (Math.random() - 0.5) * 0.05 * randomFactor;
                 ball.velocityX += randomX;
                 
                 // Add a minimum velocity check to prevent the ball from moving too slowly
@@ -1493,6 +1568,41 @@
                 
                 // Apply guidance toward target bucket
                 guideBallPath();
+                
+                // EMERGENCY OVERRIDE: Ensure ball reaches target bucket
+                // This is REQUIRED - ball MUST reach the predetermined bucket
+                const target = bucketLocations[targetBucket - 1];
+                
+                // Force the ball to stay within reasonable range of target
+                // As the ball gets lower, we apply stronger and stronger corrections
+                const verticalProgress = ball.y / canvas.height;
+                if (verticalProgress > 0.6) {
+                    // Calculate the horizontal distance to target
+                    const dx = target.x - ball.x;
+                    const targetWidth = target.width;
+                    
+                    // Calculate how far out of range we are (as a ratio of bucket width)
+                    const outOfRangeRatio = Math.abs(dx) / (targetWidth * 4);
+                    
+                    // Increase influence as we get closer to bottom and more out of range
+                    const correctionFactor = outOfRangeRatio * (verticalProgress - 0.6) * 20;
+                    
+                    // Apply horizontal corrective force directly
+                    if (correctionFactor > 0.1) {
+                        ball.velocityX += Math.sign(dx) * correctionFactor;
+                    }
+                    
+                    // If we're VERY close to the bottom and not aligned, apply emergency correction
+                    if (verticalProgress > 0.9 && Math.abs(dx) > targetWidth * 0.5) {
+                        // Strong direct velocity adjustment
+                        ball.velocityX = Math.sign(dx) * 3;
+                        
+                        // If EXTREMELY close to bottom, just move the ball directly
+                        if (verticalProgress > 0.95) {
+                            ball.x += dx * 0.3; // Move 30% closer to target each frame
+                        }
+                    }
+                }
                 
                 // Apply gravity
                 ball.velocityY += GAME_CONFIG.gravity * deltaTime;
@@ -1520,12 +1630,49 @@
                     collisionHistory.push({ x: ball.x, y: ball.y, age: 0 });
                 }
                 
-                // Check if ball fell out of bounds
+                // Check if ball is near the bottom without landing in a bucket
+                if (ball.y - ball.radius > canvas.height * 0.95) {
+                    // FAILSAFE: Ball should NEVER miss - this is a legal requirement
+                    // If we somehow get here, find the closest bucket to the ball
+                    // and force it into that bucket
+                    
+                    // Default to target bucket
+                    let closestBucket = bucketLocations[targetBucket - 1];
+                    
+                    // If the ball is clearly heading toward a bucket other than the target
+                    // and we're very close to the bottom, accept that bucket instead
+                    // This prevents jarring last-moment corrections
+                    let minDistance = Math.abs(closestBucket.x - ball.x);
+                    
+                    bucketLocations.forEach(bucket => {
+                        const distance = Math.abs(bucket.x - ball.x);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestBucket = bucket;
+                        }
+                    });
+                    
+                    // Force the ball into the correct bucket
+                    ball.x = closestBucket.x;
+                    
+                    // If this is NOT the target bucket, correct it to be the target
+                    // This should be extremely rare but ensures legal compliance
+                    if (closestBucket.number !== targetBucket) {
+                        ball.x = bucketLocations[targetBucket - 1].x;
+                    }
+                }
+                
+                // Absolute failsafe: prevent ball from going completely out of bounds
+                // This should never happen with our guidance but is a final safety check
                 if (ball.y - ball.radius > canvas.height) {
-                    // Reset game state
-                    isGameActive = false;
-                    dropButton.disabled = false;
-                    cancelAnimationFrame(animationFrameId);
+                    // Force ball into target bucket
+                    const target = bucketLocations[targetBucket - 1];
+                    ball.x = target.x;
+                    ball.y = target.y + target.height / 2;
+                    ball.velocityX = 0;
+                    ball.velocityY = 1;
+                    
+                    // Let the checkBucketLanding function handle it
                 }
             }
             
@@ -1547,18 +1694,43 @@
                     throw new Error("Target bucket is not set");
                 }
                 
+                // Get the target bucket
+                const target = bucketLocations[targetBucket - 1];
+                
+                // Determine starting position based on a more controlled approach:
+                // - For buckets 1 and 5 (edges): Start close to target bucket (60% toward target)
+                // - For buckets 2 and 4: Start moderately biased (40% toward target)
+                // - For bucket 3 (middle): Start in center with small random offset
+                
                 // Base position in the center
                 let xPos = canvas.width / 2;
                 
-                // Calculate small offset based on target bucket
-                // This gives the ball a slight initial bias toward the target
+                // Moderate bias based on target bucket location
                 const bucketOffset = targetBucket - Math.ceil(GAME_CONFIG.bucketCount / 2);
-                const maxOffset = canvas.width * 0.05; // 5% of canvas width max
-                const initialOffset = bucketOffset * (maxOffset / Math.ceil(GAME_CONFIG.bucketCount / 2));
                 
-                // Add small randomness to make it look natural
-                const randomFactor = (Math.random() - 0.5) * (canvas.width * 0.02);
-                xPos += initialOffset + randomFactor;
+                // Calculate bias factor (higher for edge buckets, lower for middle)
+                let biasFactor;
+                if (targetBucket === 1 || targetBucket === GAME_CONFIG.bucketCount) {
+                    // Strong bias for edge buckets
+                    biasFactor = 0.6; 
+                } else if (targetBucket === 2 || targetBucket === GAME_CONFIG.bucketCount - 1) {
+                    // Moderate bias for near-edge buckets
+                    biasFactor = 0.4;
+                } else {
+                    // Minimal bias for middle buckets
+                    biasFactor = 0.2;
+                }
+                
+                // Calculate distance to target bucket
+                const targetDistance = target.x - xPos;
+                
+                // Apply bias toward target bucket
+                xPos += targetDistance * biasFactor;
+                
+                // Add small randomness to make it look natural (less for edge buckets)
+                const randomness = Math.min(0.05, 0.1 - biasFactor * 0.1); // Less randomness for edge buckets
+                const randomFactor = (Math.random() - 0.5) * (canvas.width * randomness);
+                xPos += randomFactor;
                 
                 // Ensure within bounds
                 xPos = Math.max(GAME_CONFIG.ballRadius, Math.min(canvas.width - GAME_CONFIG.ballRadius, xPos));
