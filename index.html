@@ -266,6 +266,9 @@
                 <div class="debug-label">Target Bucket:</div>
                 <div class="debug-value target-value" id="debug-target">None</div>
                 
+                <div class="debug-label">Landed in Bucket:</div>
+                <div class="debug-value" id="debug-landed-bucket">None</div>
+                
                 <div class="debug-label">Success Rate:</div>
                 <div class="debug-value success-rate" id="debug-success-rate">0% (0/0)</div>
             </div>
@@ -274,8 +277,8 @@
                 <div class="debug-label">Last Result:</div>
                 <div class="debug-value" id="debug-last-result">None</div>
                 
-                <div class="debug-label">Landed in Bucket:</div>
-                <div class="debug-value" id="debug-landed-bucket">None</div>
+                <div class="debug-label">Correction Level:</div>
+                <div class="debug-value" id="debug-correction-level">None</div>
             </div>
         </div>
         
@@ -401,6 +404,7 @@
                 successfulDrops: 0,
                 lastResult: null, // 'success' or 'failure'
                 lastBucketLanded: null, // Which bucket the ball landed in
+                correctionLevel: "None", // Track what level of correction was needed (None, Slight, Emergency)
                 randomBucketHistory: [] // Track which buckets were selected in random mode
             };
             
@@ -1669,7 +1673,9 @@
                 // Force the ball to stay within reasonable range of target
                 // As the ball gets lower, we apply stronger and stronger corrections
                 const verticalProgress = ball.y / canvas.height;
-                if (verticalProgress > 0.6) {
+                
+                // Start corrections earlier (50% height instead of 60%)
+                if (verticalProgress > 0.5) {
                     // Calculate the horizontal distance to target
                     const dx = target.x - ball.x;
                     const targetWidth = target.width;
@@ -1677,26 +1683,55 @@
                     // Calculate how far out of range we are (as a ratio of bucket width)
                     const outOfRangeRatio = Math.abs(dx) / (targetWidth * 4);
                     
-                    // Increase influence as we get closer to bottom and more out of range
-                    const correctionFactor = outOfRangeRatio * (verticalProgress - 0.6) * 20;
+                    // Easing function: make corrections smoother with cubic easing
+                    const easeInCubic = (t) => t * t * t;
+                    const normalizedProgress = (verticalProgress - 0.5) / 0.5; // 0 to 1 as ball falls
+                    const easedCorrection = easeInCubic(normalizedProgress);
                     
-                    // Apply horizontal corrective force directly
-                    if (correctionFactor > 0.1) {
+                    // More subtle initial correction that gradually increases
+                    const correctionFactor = outOfRangeRatio * easedCorrection * 10;
+                    
+                    // Apply smaller correction each frame (reduced from 20 to 10)
+                    if (outOfRangeRatio > 0.1) { // Only correct if significantly off target
                         ball.velocityX += Math.sign(dx) * correctionFactor;
+                        
+                        // Track that at least slight correction was used
+                        if (gameStats.correctionLevel === "None") {
+                            gameStats.correctionLevel = "Slight";
+                        }
+                        
+                        // Add subtle logging at significant correction points
+                        if (correctionFactor > 1 && Math.random() < 0.05) {
+                            console.log(`Subtle path correction: ${Math.round(correctionFactor * 100) / 100} at ${Math.round(verticalProgress * 100)}% height`);
+                        }
                     }
                     
-                    // If we're VERY close to the bottom and not aligned, apply emergency correction
-                    if (verticalProgress > 0.85 && Math.abs(dx) > targetWidth * 0.5) {
-                        // Strong direct velocity adjustment
-                        ball.velocityX = Math.sign(dx) * 3;
+                    // If we're close to the bottom and not aligned, apply graduated emergency correction
+                    // Start emergency corrections at 75% height (instead of 85%)
+                    if (verticalProgress > 0.75 && Math.abs(dx) > targetWidth * 0.5) {
+                        // Mark as emergency correction
+                        gameStats.correctionLevel = "Emergency";
                         
-                        // Apply stronger correction near the bottom
-                        // The closer to the bottom, the stronger the correction
-                        const correctionPower = Math.min((verticalProgress - 0.85) * 15, 1);
+                        // Log emergency correction
+                        if (Math.random() < 0.1) { // Throttle logging to avoid console spam
+                            console.log(`Emergency correction at ${Math.round(verticalProgress * 100)}% height, distance: ${Math.round(Math.abs(dx))} pixels`);
+                        }
                         
-                        // If EXTREMELY close to bottom, just move the ball directly
-                        if (verticalProgress > 0.9) {
-                            ball.x += dx * correctionPower * 0.4; // Move closer to target each frame
+                        // Eased correction power - more natural acceleration toward target
+                        const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4); // Stronger at end
+                        const correctionRange = (verticalProgress - 0.75) / 0.25; // 0 to 1 range
+                        const easedCorrection = easeOutQuart(correctionRange);
+                        
+                        // Graduated velocity adjustment - starts subtler
+                        const velocityAdjustment = Math.sign(dx) * (1 + easedCorrection * 2);
+                        ball.velocityX = (ball.velocityX * 0.5) + (velocityAdjustment * 0.5); // Blend existing and new velocity
+                        
+                        // More subtle position adjustment that increases with depth
+                        // Only apply direct position adjustments after 85% height
+                        if (verticalProgress > 0.85) {
+                            // Smaller incremental position adjustments (max 10% of distance per frame)
+                            const positionAdjustment = dx * easedCorrection * 0.1;
+                            ball.x += positionAdjustment;
                         }
                     }
                 }
@@ -1730,19 +1765,28 @@
                 // Check if ball is near the bottom without landing in a bucket
                 if (ball.y - ball.radius > canvas.height * 0.92) {
                     // FAILSAFE: Ball should NEVER miss - this is a legal requirement
-                    // If we somehow get here, force the ball into the target bucket directly
-                    // We're not even trying to find the closest bucket anymore - ALWAYS go to target
+                    // If we somehow get here, use a gradual approach to target bucket
                     const target = bucketLocations[targetBucket - 1];
                     
-                    // Force ball to align with the target bucket
-                    ball.x = target.x;
+                    // Calculate distance to target
+                    const dx = target.x - ball.x;
+                    // Use remaining distance to bottom to calculate how quickly to move
+                    const remainingDistance = canvas.height - ball.y;
+                    // How many frames until we hit bottom (approximately)
+                    const framesRemaining = Math.max(5, remainingDistance / (ball.velocityY * deltaTime));
+                    // Amount to move per frame (20% of remaining distance per frame, max 30% of gap)
+                    const moveAmount = Math.min(dx * 0.2, dx * 3 / framesRemaining);
                     
-                    // Set a moderate downward velocity to ensure it completes the landing
-                    ball.velocityX = 0;
-                    ball.velocityY = 3;
+                    // Apply graduated correction
+                    ball.x += moveAmount;
+                    // Dampen horizontal velocity
+                    ball.velocityX = (ball.velocityX * 0.3) + (Math.sign(dx) * 0.5);
                     
-                    // Log emergency correction (visible only in debug console) to track occurrences
-                    console.log("Emergency bucket correction applied");
+                    // Set correction level to highest emergency
+                    gameStats.correctionLevel = "Final Emergency";
+                    
+                    // Log final emergency correction - ALWAYS log this one
+                    console.log(`Final emergency correction at ${Math.round(ball.y / canvas.height * 100)}% height, ${framesRemaining.toFixed(1)} frames to impact`);
                 }
                 
                 // Absolute failsafe: prevent ball from going completely out of bounds
@@ -1832,8 +1876,9 @@
                 // Reset landing tracking flag for new ball
                 landingHandled = false;
                 
-                // Clear last bucket landed info
+                // Clear last bucket landed info and reset correction level
                 gameStats.lastBucketLanded = null;
+                gameStats.correctionLevel = "None";
                 
                 // Set game state
                 gameState = 'dropping';
@@ -2072,6 +2117,7 @@
                 const debugSuccessRate = document.getElementById('debug-success-rate');
                 const debugLastResult = document.getElementById('debug-last-result');
                 const debugLandedBucket = document.getElementById('debug-landed-bucket');
+                const debugCorrectionLevel = document.getElementById('debug-correction-level');
                 
                 // Update game status information
                 if (debugMode) {
@@ -2120,6 +2166,20 @@
                     } else {
                         debugLandedBucket.textContent = 'None';
                         debugLandedBucket.style.color = '#adb5bd';
+                    }
+                }
+                
+                // Update correction level info
+                if (debugCorrectionLevel) {
+                    debugCorrectionLevel.textContent = gameStats.correctionLevel;
+                    
+                    // Color-code based on correction level
+                    if (gameStats.correctionLevel === "None") {
+                        debugCorrectionLevel.style.color = '#4ade80'; // Green for no correction
+                    } else if (gameStats.correctionLevel === "Slight") {
+                        debugCorrectionLevel.style.color = '#facc15'; // Yellow for slight correction
+                    } else {
+                        debugCorrectionLevel.style.color = '#f87171'; // Red for emergency corrections
                     }
                 }
             }
