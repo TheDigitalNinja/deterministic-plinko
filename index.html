@@ -273,6 +273,9 @@
             <div class="debug-section">
                 <div class="debug-label">Last Result:</div>
                 <div class="debug-value" id="debug-last-result">None</div>
+                
+                <div class="debug-label">Landed in Bucket:</div>
+                <div class="debug-value" id="debug-landed-bucket">None</div>
             </div>
         </div>
         
@@ -397,6 +400,7 @@
                 totalDrops: 0,
                 successfulDrops: 0,
                 lastResult: null, // 'success' or 'failure'
+                lastBucketLanded: null, // Which bucket the ball landed in
                 randomBucketHistory: [] // Track which buckets were selected in random mode
             };
             
@@ -1487,7 +1491,7 @@
                         // Continue animation loop to prevent stuck animation
                         animationFrameId = requestAnimationFrame(gameLoop);
                         
-                        // Set up animation to gradually slow down the ball
+                        // Set up animation to gradually slow down the ball and then remove it
                         const slowDownInterval = setInterval(() => {
                             if (ball) {
                                 // Slow down particle and animation effects
@@ -1499,8 +1503,12 @@
                                     });
                                 }
                                 
-                                // Clear interval after a time
-                                if (!ball || particles.length === 0) {
+                                // Clean up ball after a delay (about 1.5 seconds)
+                                if (Date.now() - bucket.highlightTime > 1500) {
+                                    // Save the bucket info but clear the ball
+                                    bucket.landedBall = null;
+                                    ball = null;
+                                    ballTrail = [];
                                     clearInterval(slowDownInterval);
                                 }
                             } else {
@@ -1832,6 +1840,9 @@
                 // Reset landing tracking flag for new ball
                 landingHandled = false;
                 
+                // Clear last bucket landed info
+                gameStats.lastBucketLanded = null;
+                
                 // Set game state
                 gameState = 'dropping';
                 
@@ -1943,6 +1954,7 @@
                 if (bucketLocations && bucketLocations.length) {
                     bucketLocations.forEach(bucket => {
                         bucket.highlight = false;
+                        bucket.landedBall = null;
                         // Reset bucket score display
                         bucket.score = 0;
                     });
@@ -2023,6 +2035,8 @@
                 landingHandled = true;
                 
                 // Update game statistics
+                gameStats.lastBucketLanded = bucketNumber;
+                
                 if (isTargetBucket) {
                     gameStats.successfulDrops++;
                     gameStats.lastResult = 'success';
@@ -2065,6 +2079,7 @@
                 const debugTarget = document.getElementById('debug-target');
                 const debugSuccessRate = document.getElementById('debug-success-rate');
                 const debugLastResult = document.getElementById('debug-last-result');
+                const debugLandedBucket = document.getElementById('debug-landed-bucket');
                 
                 // Update game status information
                 if (debugMode) {
@@ -2105,7 +2120,16 @@
                     debugLastResult.style.color = gameStats.lastResult === 'success' ? '#4ade80' : '#f87171';
                 }
                 
-                // Drop time display removed
+                // Update landed bucket info
+                if (debugLandedBucket) {
+                    if (gameStats.lastBucketLanded) {
+                        debugLandedBucket.textContent = gameStats.lastBucketLanded;
+                        debugLandedBucket.style.color = gameStats.lastResult === 'success' ? '#4ade80' : '#f87171';
+                    } else {
+                        debugLandedBucket.textContent = 'None';
+                        debugLandedBucket.style.color = '#adb5bd';
+                    }
+                }
             }
             
             // Event handlers
