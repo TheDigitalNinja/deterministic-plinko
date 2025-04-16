@@ -31,6 +31,7 @@
             justify-content: center;
             margin-bottom: 20px;
             width: 100%;
+            gap: 15px;
         }
 
         .bucket-buttons {
@@ -48,20 +49,98 @@
             margin: 0 5px;
             border-radius: 5px;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
         }
 
         button:hover {
             background-color: #6a6d91;
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         button.selected {
             background-color: #f72585;
+            box-shadow: 0 0 10px rgba(247, 37, 133, 0.5);
+        }
+
+        button.active-random {
+            background-color: #4cc9f0;
+            box-shadow: 0 0 15px rgba(76, 201, 240, 0.5);
+        }
+
+        button.pulsing {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 201, 240, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0);
+            }
+        }
+
+        button.ready {
+            background-color: #4cc9f0;
+            animation: readyPulse 2s infinite;
+        }
+
+        @keyframes readyPulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 10px 3px rgba(76, 201, 240, 0.7);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0);
+            }
+        }
+
+        button.active {
+            background-color: #7209b7;
+        }
+
+        #random {
+            background: linear-gradient(45deg, #f72585, #7209b7, #4361ee, #4cc9f0);
+            background-size: 300% 300%;
+            animation: gradientShift 8s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
         }
 
         canvas {
             border: 2px solid #f72585;
             background-color: #16213e;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
     </style>
 </head>
@@ -162,6 +241,7 @@
             // Game state
             let selectedBucket = null;
             let isGameActive = false;
+            let gameState = 'ready'; // ready, dropping, completed
             let animationFrameId = null;
             let lastTimestamp = 0;
             let deltaTime = 0;
@@ -175,6 +255,12 @@
             let pegPathData = {}; // Stores peg guidance data for visualization
             let particles = [];   // Particle effects for collisions
             let lastCollisionPeg = null; // Last peg the ball collided with (to prevent multiple collisions)
+            let gameStats = {
+                totalDrops: 0,
+                successfulDrops: 0,
+                lastResult: null, // 'success' or 'failure'
+                randomBucketHistory: [] // Track which buckets were selected in random mode
+            };
             
             // Resize the canvas to maintain proper size and aspect ratio
             function resizeCanvas() {
@@ -1143,6 +1229,9 @@
                         const bucketNumber = i + 1;
                         const landedInTargetBucket = bucketNumber === targetBucket;
                         
+                        // Update game statistics
+                        handleBallLanding(bucketNumber, landedInTargetBucket);
+                        
                         // Visual feedback for landing
                         ball.velocityX = 0;
                         ball.velocityY = Math.min(ball.velocityY * 0.3, 2); // Slow down but keep some movement
@@ -1190,10 +1279,24 @@
                             });
                         }
                         
+                        // If random mode was active, highlight which bucket was targeted
+                        if (selectedBucket === 'random') {
+                            // Briefly highlight the target bucket that was secretly selected
+                            const targetBucketObj = bucketLocations[targetBucket - 1];
+                            if (targetBucketObj) {
+                                targetBucketObj.highlight = true;
+                                targetBucketObj.highlightColor = 'rgba(100, 255, 100, 0.3)'; // Green glow
+                                targetBucketObj.highlightTime = Date.now();
+                            }
+                        }
+                        
                         // End game after a short delay
                         setTimeout(() => {
                             isGameActive = false;
-                            dropButton.disabled = false;
+                            gameState = 'completed';
+                            
+                            // Update controls for completed state
+                            updateControls();
                             
                             // Keep ball visible but cancel animation loop
                             cancelAnimationFrame(animationFrameId);
@@ -1379,6 +1482,44 @@
                 return xPos;
             }
             
+            // Select a target bucket for the random mode
+            function selectRandomTargetBucket() {
+                // Basic approach: pure random selection
+                let randomBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+                
+                // Optional: implement a smart selection algorithm based on game statistics
+                // For example, favor buckets that haven't been selected recently
+                
+                // Optional: weighted randomization to create a more balanced distribution
+                // For demonstration, let's use a simple algorithm that avoids selecting
+                // the same bucket twice in a row when possible
+                
+                if (gameStats.randomBucketHistory.length > 0) {
+                    const lastBucket = gameStats.randomBucketHistory[gameStats.randomBucketHistory.length - 1];
+                    
+                    // If we got the same bucket again and we have more than one bucket,
+                    // try once more to get a different one
+                    if (randomBucket === lastBucket && GAME_CONFIG.bucketCount > 1) {
+                        randomBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+                        
+                        // If we still got the same bucket, intentionally pick a different one
+                        if (randomBucket === lastBucket) {
+                            randomBucket = (lastBucket % GAME_CONFIG.bucketCount) + 1;
+                        }
+                    }
+                }
+                
+                // Keep track of selected buckets
+                gameStats.randomBucketHistory.push(randomBucket);
+                
+                // Limit history length to prevent memory growth
+                if (gameStats.randomBucketHistory.length > 10) {
+                    gameStats.randomBucketHistory.shift();
+                }
+                
+                return randomBucket;
+            }
+            
             // Create the ball at the top of the screen
             function createBall() {
                 // Clear previous state
@@ -1386,10 +1527,35 @@
                 collisionHistory = [];
                 lastCollisionPeg = null;
                 
-                // If random mode is selected, choose a random bucket
+                // Set game state
+                gameState = 'dropping';
+                
+                // Increment total drops counter
+                gameStats.totalDrops++;
+                
+                // Determine target bucket based on mode
                 if (selectedBucket === 'random') {
-                    targetBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
+                    // In random mode, system selects a target bucket
+                    targetBucket = selectRandomTargetBucket();
+                    
+                    // Visual feedback for random mode
+                    // Briefly highlight all buckets then settle on the chosen one
+                    bucketLocations.forEach((bucket, index) => {
+                        setTimeout(() => {
+                            bucket.highlight = true;
+                            bucket.highlightColor = 'rgba(255, 255, 255, 0.3)';
+                            bucket.highlightTime = Date.now();
+                            
+                            // Clear highlight after a short time
+                            setTimeout(() => {
+                                if (gameState === 'dropping') {
+                                    bucket.highlight = false;
+                                }
+                            }, 300);
+                        }, index * 100); // Stagger the highlights
+                    });
                 } else {
+                    // In target mode, player selected the bucket
                     targetBucket = selectedBucket;
                 }
                 
@@ -1416,23 +1582,85 @@
                     rotation: 0,
                     rotationSpeed: (Math.random() - 0.5) * 0.2
                 };
+                
+                // Update UI for random mode if needed
+                updateRandomModeUI();
+            }
+            
+            // Update UI elements for random mode
+            function updateRandomModeUI() {
+                if (selectedBucket !== 'random') return;
+                
+                // Optional: Show some UI element indicating the system's selection
+                // For this implementation, we'll just update the UI to highlight that we're in random mode
+                
+                // Update button styles for random mode
+                const randomButton = document.getElementById('random');
+                if (randomButton) {
+                    randomButton.classList.add('active-random');
+                    
+                    // Pulsing effect for the random button when active
+                    if (!randomButton.classList.contains('pulsing')) {
+                        randomButton.classList.add('pulsing');
+                    }
+                }
+                
+                // Display subtle indicator of which bucket was selected, if desired
+                // For this implementation, we'll leave this subtle
             }
             
             // Reset the ball to the top of the screen
             function resetBall() {
+                // Clear ball and related state
                 ball = null;
                 ballTrail = [];
                 collisionHistory = [];
+                particles = [];
                 targetBucket = null;
+                lastCollisionPeg = null;
+                
+                // Reset game state
                 isGameActive = false;
+                gameState = 'ready';
                 dropButton.disabled = false;
                 
+                // Stop animation frame
                 if (animationFrameId) {
                     cancelAnimationFrame(animationFrameId);
                     animationFrameId = null;
                 }
                 
+                // Clear any active bucket highlights
+                if (bucketLocations && bucketLocations.length) {
+                    bucketLocations.forEach(bucket => {
+                        bucket.highlight = false;
+                    });
+                }
+                
+                // Update the UI
+                updateControls();
+                
+                // Redraw the game
                 drawGame();
+            }
+            
+            // Update game controls based on game state
+            function updateControls() {
+                // Enable/disable buttons based on game state
+                dropButton.disabled = isGameActive || selectedBucket === null;
+                resetButton.disabled = !isGameActive && !ball; // Only enable reset when there's a ball or game is active
+                
+                // Add visual cues based on game state
+                if (gameState === 'ready') {
+                    dropButton.classList.add('ready');
+                    resetButton.classList.remove('active');
+                } else if (gameState === 'dropping') {
+                    dropButton.classList.remove('ready');
+                    resetButton.classList.add('active');
+                } else if (gameState === 'completed') {
+                    dropButton.classList.add('ready');
+                    resetButton.classList.add('active');
+                }
             }
             
             // Draw the game elements on the canvas
@@ -1467,19 +1695,70 @@
                 }
             }
             
+            // Update game state when a ball lands in a bucket
+            function handleBallLanding(bucketNumber, isTargetBucket) {
+                // Update game statistics
+                if (isTargetBucket) {
+                    gameStats.successfulDrops++;
+                    gameStats.lastResult = 'success';
+                } else {
+                    gameStats.lastResult = 'failure';
+                }
+                
+                // Update game state
+                gameState = 'completed';
+                
+                // Optional: Show success rate or other statistics
+                updateGameStatistics();
+            }
+            
+            // Update and display game statistics
+            function updateGameStatistics() {
+                // Calculate success rate
+                const successRate = gameStats.totalDrops > 0 ? 
+                    (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1) : 0;
+                
+                // Optional: Update some UI element to show statistics
+                // For this implementation, we'll just log to console
+                console.log(`Success rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`);
+                
+                // If you want to show this in the UI, uncomment and customize this:
+                /*
+                const statsElement = document.getElementById('game-stats');
+                if (statsElement) {
+                    statsElement.textContent = `Success: ${successRate}%`;
+                }
+                */
+            }
+            
             // Event handlers
             function handleBucketSelection(event) {
                 if (isGameActive) return;
                 
-                bucketButtons.forEach(btn => btn.classList.remove('selected'));
+                // Remove selected class from all buttons
+                bucketButtons.forEach(btn => {
+                    btn.classList.remove('selected');
+                    btn.classList.remove('active-random');
+                    btn.classList.remove('pulsing');
+                });
+                
+                // Add selected class to clicked button
                 event.target.classList.add('selected');
                 
+                // Set the selected bucket
                 if (event.target.id === 'random') {
                     selectedBucket = 'random';
+                    
+                    // Add special styling for random mode
+                    event.target.classList.add('active-random');
                 } else {
                     selectedBucket = parseInt(event.target.textContent);
                 }
                 
+                // Update controls based on selection
+                updateControls();
+                
+                // Redraw the game
                 drawGame();
             }
             
@@ -1487,16 +1766,23 @@
                 if (isGameActive || selectedBucket === null) return;
                 
                 isGameActive = true;
-                dropButton.disabled = true;
                 lastTimestamp = 0;
                 
                 // Initialize ball and start game loop
                 createBall();
+                
+                // Update controls based on new game state
+                updateControls();
+                
+                // Start animation loop
                 animationFrameId = requestAnimationFrame(gameLoop);
             }
             
             function handleReset() {
-                resetBall();
+                // Only reset if game is active or ball exists
+                if (isGameActive || ball) {
+                    resetBall();
+                }
             }
             
             function addEventListeners() {
@@ -1512,6 +1798,9 @@
             
             // Initialize the game
             initGame();
+            
+            // Initial UI update
+            updateControls();
         });
     </script>
 </body>
