@@ -375,15 +375,9 @@
                 // Calculate horizontal distance to bucket
                 const dx = targetBucket.x - peg.x;
                 
-                // Get the row number - we need to know how far down the board we are
-                let rowIndex = 0;
-                for (let i = 0; i < pegIndex; i++) {
-                    if (pegLocations[i].y < peg.y && 
-                        Math.abs(pegLocations[i].y - peg.y) < GAME_CONFIG.pegSpacing) {
-                        rowIndex++;
-                        break;
-                    }
-                }
+                // Get the row number directly from the peg's properties
+                // (we store row index when creating the peg)
+                const rowIndex = peg.row;
                 
                 // Get the zone influence
                 const zoneInfo = getPegZoneInfluence(rowIndex);
@@ -444,26 +438,36 @@
                 const horizontalSpacing = GAME_CONFIG.pegSpacing;
                 const verticalSpacing = GAME_CONFIG.pegSpacing * 0.866; // approx. sqrt(3)/2
                 
-                // Generate peg positions in staggered rows (triangular grid)
+                // Create a proper triangular pattern:
+                // Row 0: Center peg at top
+                // Row 1: Two pegs, perfectly centered
+                // Row 2: Three pegs, with center one in middle
+                // Etc.
+                
+                // Maximum pegs in bottom row
+                const maxPegs = Math.min(GAME_CONFIG.pegRows, 11);
+                
+                // Create the peg grid - proper triangle
                 for (let row = 0; row < GAME_CONFIG.pegRows; row++) {
-                    const pegsInRow = row + 5;
-                    const rowWidth = (pegsInRow - 1) * horizontalSpacing;
+                    // Pegs in this row - row 0 has 1, row 1 has 2, row 2 has 3, etc.
+                    const pegsInThisRow = Math.min(row + 1, maxPegs);
+                    
+                    // Calculate the starting x-position to center the row
+                    // We need to center the pegs properly to form a triangle
+                    const rowWidth = (pegsInThisRow - 1) * horizontalSpacing;
                     const rowStartX = startX - rowWidth / 2;
                     
-                    // Offset every other row for triangular pattern
-                    const xOffset = (row % 2 === 0) ? 0 : horizontalSpacing / 2;
-                    
-                    for (let col = 0; col < pegsInRow; col++) {
-                        // Create peg with position, visual, and physics properties
+                    // Place each peg in this row
+                    for (let i = 0; i < pegsInThisRow; i++) {
+                        const pegX = rowStartX + i * horizontalSpacing;
+                        
                         pegLocations.push({
-                            x: rowStartX + col * horizontalSpacing + xOffset,
+                            x: pegX,
                             y: startY + row * verticalSpacing,
                             radius: GAME_CONFIG.pegRadius,
                             row: row,
-                            col: col,
-                            // For visualization and effects
+                            col: i,
                             glowIntensity: GAME_CONFIG.pegGlowIntensity,
-                            // For debugging
                             influenceDirection: 0,
                             influenceStrength: 0
                         });
@@ -476,20 +480,44 @@
             // Initialize bucket positions
             function initBuckets() {
                 bucketLocations = [];
-                const bucketWidth = canvas.width / (GAME_CONFIG.bucketCount + 1);
+                
+                // Center of canvas - needed for bucket positioning
+                const startX = canvas.width / 2;
+                
+                // Bucket dimensions
                 const bucketY = canvas.height * (1 - GAME_CONFIG.bucketDepth);
                 const bucketHeight = canvas.height * GAME_CONFIG.bucketDepth;
                 
+                // Get the bottom row of pegs to align buckets with
+                const lastRowIndex = GAME_CONFIG.pegRows - 1;
+                const bottomRowPegs = Math.min(lastRowIndex + 1, 11); // Same as maxPegs from initPegs
+                
+                // Calculate the bucket width to match the spacing of the pegs
+                const bucketWidth = GAME_CONFIG.pegSpacing;
+                
+                // We want GAME_CONFIG.bucketCount buckets evenly spaced 
+                // to match the bottom row of the triangle
+                const bottomRowWidth = (bottomRowPegs - 1) * GAME_CONFIG.pegSpacing;
+                const leftEdge = startX - bottomRowWidth / 2;
+                
+                // Calculate spacing between bucket centers
+                const bucketSpacing = bottomRowWidth / (GAME_CONFIG.bucketCount - 1);
+                
+                // Position the buckets
                 for (let i = 0; i < GAME_CONFIG.bucketCount; i++) {
                     // Get the color for this bucket (or use fallback)
                     const bucketColor = GAME_CONFIG.bucketColors[i] || '#4a4e69';
                     
+                    // Calculate bucket position
+                    // If we have 5 buckets and 11 pegs, we want buckets at positions 0, 2.5, 5, 7.5, 10
+                    const bucketCenterX = leftEdge + i * bucketSpacing;
+                    
                     // Add subtle variation to bucket sizes to make them look more natural
-                    const widthVariation = 1 + (Math.random() * 0.1 - 0.05); // +/- 5%
+                    const widthVariation = 1 + (Math.random() * 0.08 - 0.04); // +/- 4%
                     const adjustedWidth = bucketWidth * widthVariation;
                     
                     bucketLocations.push({
-                        x: (i + 1) * bucketWidth,
+                        x: bucketCenterX, // Center of bucket between pegs
                         y: bucketY,
                         width: adjustedWidth,
                         height: bucketHeight,
