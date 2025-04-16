@@ -18,12 +18,64 @@
             color: #fff;
         }
 
+        .game-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .debug-panel {
+            width: 200px;
+            background-color: #22223b;
+            margin-right: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .debug-panel h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #4a4e69;
+            padding-bottom: 8px;
+            color: #f8f9fa;
+        }
+        
+        .debug-section {
+            margin-bottom: 15px;
+        }
+        
+        .debug-label {
+            font-size: 0.9rem;
+            color: #adb5bd;
+            margin-bottom: 5px;
+        }
+        
+        .debug-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .success-rate {
+            color: #4cc9f0;
+        }
+        
+        .target-value {
+            color: #f72585;
+        }
+        
+        .mode-value {
+            color: #4361ee;
+        }
+
         .game-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 800px;
+            max-width: 750px;
         }
 
         .controls {
@@ -201,35 +253,55 @@
     </style>
 </head>
 <body>
-    <div class="game-container">
-        <h1>Plinko Game</h1>
-        
-        <div class="game-mode">
-            <h3>Select Target Mode</h3>
-            <div class="mode-description" id="mode-description">
-                Select a specific bucket number or choose Random mode
+    <h1>Plinko Game</h1>
+    
+    <div class="game-wrapper">
+        <div class="debug-panel">
+            <h3>Debug Info</h3>
+            
+            <div class="debug-section">
+                <div class="debug-label">Game Status:</div>
+                <div class="debug-value mode-value" id="debug-mode">Not Started</div>
+                
+                <div class="debug-label">Target Bucket:</div>
+                <div class="debug-value target-value" id="debug-target">None</div>
+                
+                <div class="debug-label">Success Rate:</div>
+                <div class="debug-value success-rate" id="debug-success-rate">0% (0/0)</div>
+            </div>
+            
+            <div class="debug-section">
+                <div class="debug-label">Last Result:</div>
+                <div class="debug-value" id="debug-last-result">None</div>
+                
+                <div class="debug-label">Last Drop Time:</div>
+                <div class="debug-value" id="debug-drop-time">0.00s</div>
             </div>
         </div>
         
-        <div class="bucket-buttons">
-            <button id="bucket1" class="target-btn" data-bucket="1">1</button>
-            <button id="bucket2" class="target-btn" data-bucket="2">2</button>
-            <button id="bucket3" class="target-btn" data-bucket="3">3</button>
-            <button id="bucket4" class="target-btn" data-bucket="4">4</button>
-            <button id="bucket5" class="target-btn" data-bucket="5">5</button>
-            <button id="random" class="target-btn">Random</button>
+        <div class="game-container">
+            <div class="game-mode">
+                <h3>Select Target Bucket</h3>
+                <div class="mode-description" id="mode-description">
+                    Select which bucket the ball should land in
+                </div>
+            </div>
+            
+            <div class="bucket-buttons">
+                <button id="bucket1" class="target-btn" data-bucket="1">1</button>
+                <button id="bucket2" class="target-btn" data-bucket="2">2</button>
+                <button id="bucket3" class="target-btn" data-bucket="3">3</button>
+                <button id="bucket4" class="target-btn" data-bucket="4">4</button>
+                <button id="bucket5" class="target-btn" data-bucket="5">5</button>
+            </div>
+            
+            <div class="controls">
+                <button id="drop">Drop Ball</button>
+                <button id="reset">Reset</button>
+            </div>
+            
+            <canvas id="plinkoCanvas"></canvas>
         </div>
-        
-        <div class="controls">
-            <button id="drop">Drop Ball</button>
-            <button id="reset">Reset</button>
-        </div>
-        
-        <div class="game-stats">
-            <span id="stats-display"></span>
-        </div>
-        
-        <canvas id="plinkoCanvas"></canvas>
     </div>
 
     <script>
@@ -1335,7 +1407,9 @@
                     // Force alignment with target bucket
                     ball.x = targetBucketObj.x;
                     
-                    // Prepare to handle as normal bucket landing
+                    // We manually place it in the bucket, but we DON'T count this
+                    // as a separate bucket landing - the normal code below will handle
+                    // the statistics since the ball is now in the correct position
                 }
                 
                 for (let i = 0; i < bucketLocations.length; i++) {
@@ -1738,43 +1812,6 @@
                 return xPos;
             }
             
-            // Select a target bucket for the random mode
-            function selectRandomTargetBucket() {
-                // Basic approach: pure random selection
-                let randomBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
-                
-                // Optional: implement a smart selection algorithm based on game statistics
-                // For example, favor buckets that haven't been selected recently
-                
-                // Optional: weighted randomization to create a more balanced distribution
-                // For demonstration, let's use a simple algorithm that avoids selecting
-                // the same bucket twice in a row when possible
-                
-                if (gameStats.randomBucketHistory.length > 0) {
-                    const lastBucket = gameStats.randomBucketHistory[gameStats.randomBucketHistory.length - 1];
-                    
-                    // If we got the same bucket again and we have more than one bucket,
-                    // try once more to get a different one
-                    if (randomBucket === lastBucket && GAME_CONFIG.bucketCount > 1) {
-                        randomBucket = Math.floor(Math.random() * GAME_CONFIG.bucketCount) + 1;
-                        
-                        // If we still got the same bucket, intentionally pick a different one
-                        if (randomBucket === lastBucket) {
-                            randomBucket = (lastBucket % GAME_CONFIG.bucketCount) + 1;
-                        }
-                    }
-                }
-                
-                // Keep track of selected buckets
-                gameStats.randomBucketHistory.push(randomBucket);
-                
-                // Limit history length to prevent memory growth
-                if (gameStats.randomBucketHistory.length > 10) {
-                    gameStats.randomBucketHistory.shift();
-                }
-                
-                return randomBucket;
-            }
             
             // Create the ball at the top of the screen
             function createBall() {
@@ -1783,36 +1820,31 @@
                 collisionHistory = [];
                 lastCollisionPeg = null;
                 
+                // Reset landing tracking flag for new ball
+                landingHandled = false;
+                
                 // Set game state
                 gameState = 'dropping';
                 
                 // Increment total drops counter
                 gameStats.totalDrops++;
                 
-                // Determine target bucket based on mode
-                if (selectedBucket === 'random') {
-                    // In random mode, system selects a target bucket
-                    targetBucket = selectRandomTargetBucket();
+                // Always use selected bucket as target (we no longer have a true random mode)
+                targetBucket = selectedBucket;
+                
+                // Visual feedback - highlight the target bucket briefly
+                const targetBucketElement = bucketLocations[targetBucket - 1];
+                if (targetBucketElement) {
+                    targetBucketElement.highlight = true;
+                    targetBucketElement.highlightColor = 'rgba(255, 255, 255, 0.5)';
+                    targetBucketElement.highlightTime = Date.now();
                     
-                    // Visual feedback for random mode
-                    // Briefly highlight all buckets then settle on the chosen one
-                    bucketLocations.forEach((bucket, index) => {
-                        setTimeout(() => {
-                            bucket.highlight = true;
-                            bucket.highlightColor = 'rgba(255, 255, 255, 0.3)';
-                            bucket.highlightTime = Date.now();
-                            
-                            // Clear highlight after a short time
-                            setTimeout(() => {
-                                if (gameState === 'dropping') {
-                                    bucket.highlight = false;
-                                }
-                            }, 300);
-                        }, index * 100); // Stagger the highlights
-                    });
-                } else {
-                    // In target mode, player selected the bucket
-                    targetBucket = selectedBucket;
+                    // Clear highlight after a short time
+                    setTimeout(() => {
+                        if (gameState === 'dropping') {
+                            targetBucketElement.highlight = false;
+                        }
+                    }, 300);
                 }
                 
                 // Generate peg path data for the selected target bucket
@@ -1820,6 +1852,9 @@
                 
                 // Calculate starting position
                 const initialX = calculateInitialBallPosition();
+                
+                // Record ball start time for timing
+                const dropStartTime = Date.now();
                 
                 // Create ball with initial velocity
                 ball = {
@@ -1836,68 +1871,45 @@
                     collisionTimeout: null,
                     // For visual effects
                     rotation: 0,
-                    rotationSpeed: (Math.random() - 0.5) * 0.2
+                    rotationSpeed: (Math.random() - 0.5) * 0.2,
+                    // For timing
+                    dropStartTime: dropStartTime
                 };
                 
                 // Update UI for current mode
                 updateModeUI();
+                
+                // Update debug panel
+                updateDebugInfo();
             }
             
-            // Update UI based on selected mode (target or random)
+            // Update UI based on the selected target bucket
             function updateModeUI() {
-                // Clear previous active state on all bucket buttons
-                document.querySelectorAll('.target-btn').forEach(btn => {
-                    btn.classList.remove('active-random');
-                    btn.classList.remove('pulsing');
-                    btn.classList.remove('selected');
-                });
-                
                 // Update mode description
                 const modeDescription = document.getElementById('mode-description');
-                const statsDisplay = document.getElementById('stats-display');
                 
                 if (!selectedBucket) {
                     if (modeDescription) {
-                        modeDescription.textContent = "Select a specific bucket number or choose Random mode";
+                        modeDescription.textContent = "Select which bucket the ball should land in";
                     }
                     return;
                 }
                 
-                // Update UI based on selected mode
-                if (selectedBucket === 'random') {
-                    // Set description for random mode
-                    if (modeDescription) {
-                        modeDescription.textContent = "Random Mode: System will select a target bucket";
-                    }
-                    
-                    // Update button styles for random mode
-                    const randomButton = document.getElementById('random');
-                    if (randomButton) {
-                        randomButton.classList.add('active-random');
-                        randomButton.classList.add('selected');
-                        
-                        // Pulsing effect for the random button when active
-                        if (!randomButton.classList.contains('pulsing')) {
-                            randomButton.classList.add('pulsing');
-                        }
-                    }
-                } else {
-                    // Set description for target mode
-                    if (modeDescription) {
-                        modeDescription.textContent = `Target Mode: Ball will land in Bucket ${selectedBucket}`;
-                    }
-                    
-                    // Highlight the selected bucket button
-                    const selectedBucketButton = document.querySelector(`.target-btn[data-bucket="${selectedBucket}"]`);
-                    if (selectedBucketButton) {
-                        selectedBucketButton.classList.add('selected');
-                    }
+                // Show which bucket is selected
+                if (modeDescription) {
+                    modeDescription.textContent = `Ball will land in Bucket ${selectedBucket}`;
                 }
                 
-                // Update stats display if we have stats
-                if (statsDisplay && gameStats.totalDrops > 0) {
-                    const successRate = (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1);
-                    statsDisplay.textContent = `Success Rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`;
+                // Make sure the correct bucket button is highlighted
+                const selectedBucketButton = document.querySelector(`.target-btn[data-bucket="${selectedBucket}"]`);
+                if (selectedBucketButton && !selectedBucketButton.classList.contains('selected')) {
+                    // Remove selected class from all buttons
+                    document.querySelectorAll('.target-btn').forEach(btn => {
+                        btn.classList.remove('selected');
+                    });
+                    
+                    // Add selected class to the targeted bucket button
+                    selectedBucketButton.classList.add('selected');
                 }
             }
             
@@ -1982,14 +1994,26 @@
                 // Draw everything
                 drawGame();
                 
+                // Update debug panel timer every 20 frames (approximately every 333ms at 60fps)
+                if (timestamp % 20 === 0) {
+                    updateDebugInfo();
+                }
+                
                 // Continue the loop if game is active
                 if (isGameActive) {
                     animationFrameId = requestAnimationFrame(gameLoop);
                 }
             }
             
+            // Track if we've already handled a landing for the current ball
+            let landingHandled = false;
+            
             // Update game state when a ball lands in a bucket
             function handleBallLanding(bucketNumber, isTargetBucket) {
+                // Prevent double-counting - only count first landing per ball drop
+                if (landingHandled) return;
+                landingHandled = true;
+                
                 // Update game statistics
                 if (isTargetBucket) {
                     gameStats.successfulDrops++;
@@ -2001,8 +2025,17 @@
                 // Update game state
                 gameState = 'completed';
                 
-                // Optional: Show success rate or other statistics
+                // Update statistics and debug panel
                 updateGameStatistics();
+                
+                // Schedule periodic updates of the debug timer until reset
+                const timerUpdateInterval = setInterval(() => {
+                    if (ball && ball.dropStartTime) {
+                        updateDebugInfo();
+                    } else {
+                        clearInterval(timerUpdateInterval);
+                    }
+                }, 100);
             }
             
             // Update and display game statistics
@@ -2011,14 +2044,75 @@
                 const successRate = gameStats.totalDrops > 0 ? 
                     (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1) : 0;
                 
-                // Update stats display
-                const statsDisplay = document.getElementById('stats-display');
-                if (statsDisplay) {
-                    statsDisplay.textContent = `Success Rate: ${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`;
-                }
+                // Update debug panel
+                updateDebugInfo(successRate);
                 
                 // Update mode UI to refresh all displays
                 updateModeUI();
+            }
+            
+            // Update the debug panel with current game state
+            function updateDebugInfo(successRate = null) {
+                // Calculate success rate if not provided
+                if (successRate === null) {
+                    successRate = gameStats.totalDrops > 0 ? 
+                        (gameStats.successfulDrops / gameStats.totalDrops * 100).toFixed(1) : 0;
+                }
+                
+                // Get debug elements
+                const debugMode = document.getElementById('debug-mode');
+                const debugTarget = document.getElementById('debug-target');
+                const debugSuccessRate = document.getElementById('debug-success-rate');
+                const debugLastResult = document.getElementById('debug-last-result');
+                const debugDropTime = document.getElementById('debug-drop-time');
+                
+                // Update game status information
+                if (debugMode) {
+                    if (isGameActive) {
+                        debugMode.textContent = 'Active';
+                        debugMode.style.color = '#4ade80'; // Green
+                    } else if (ball) {
+                        debugMode.textContent = 'Completed';
+                        debugMode.style.color = '#f87171'; // Red
+                    } else if (selectedBucket) {
+                        debugMode.textContent = 'Ready';
+                        debugMode.style.color = '#f72585'; // Pink
+                    } else {
+                        debugMode.textContent = 'Not Started';
+                        debugMode.style.color = '#adb5bd'; // Gray
+                    }
+                }
+                
+                // Update target bucket information
+                if (debugTarget) {
+                    if (targetBucket) {
+                        debugTarget.textContent = targetBucket;
+                    } else if (selectedBucket && selectedBucket !== 'random') {
+                        debugTarget.textContent = selectedBucket;
+                    } else {
+                        debugTarget.textContent = 'None';
+                    }
+                }
+                
+                // Update success rate
+                if (debugSuccessRate) {
+                    debugSuccessRate.textContent = `${successRate}% (${gameStats.successfulDrops}/${gameStats.totalDrops})`;
+                }
+                
+                // Update last result
+                if (debugLastResult && gameStats.lastResult) {
+                    debugLastResult.textContent = gameStats.lastResult === 'success' ? 'SUCCESS' : 'FAILURE';
+                    debugLastResult.style.color = gameStats.lastResult === 'success' ? '#4ade80' : '#f87171';
+                }
+                
+                // Update drop time
+                if (debugDropTime && ball && ball.dropStartTime) {
+                    const currentTime = Date.now();
+                    const elapsedSeconds = ((currentTime - ball.dropStartTime) / 1000).toFixed(2);
+                    debugDropTime.textContent = `${elapsedSeconds}s`;
+                } else if (debugDropTime) {
+                    debugDropTime.textContent = '0.00s';
+                }
             }
             
             // Event handlers
@@ -2028,26 +2122,20 @@
                 // Remove selected class from all buttons
                 bucketButtons.forEach(btn => {
                     btn.classList.remove('selected');
-                    btn.classList.remove('active-random');
-                    btn.classList.remove('pulsing');
                 });
                 
                 // Add selected class to clicked button
                 event.target.classList.add('selected');
                 
                 // Set the selected bucket
-                if (event.target.id === 'random') {
-                    selectedBucket = 'random';
-                    
-                    // Add special styling for random mode
-                    event.target.classList.add('active-random');
-                } else {
-                    selectedBucket = parseInt(event.target.dataset.bucket || event.target.textContent);
-                }
+                selectedBucket = parseInt(event.target.dataset.bucket || event.target.textContent);
                 
                 // Update controls and mode UI
                 updateControls();
                 updateModeUI();
+                
+                // Update debug panel
+                updateDebugInfo();
                 
                 // Redraw the game
                 drawGame();
@@ -2093,6 +2181,7 @@
             // Initial UI update
             updateControls();
             updateModeUI();
+            updateDebugInfo();
         });
     </script>
 </body>
