@@ -19,9 +19,8 @@
         }
         
         h1 {
-            width: 750px;
             text-align: center;
-            margin: 0 auto 10px auto;
+            margin: 0 0 10px 0;
         }
 
         .game-wrapper {
@@ -212,27 +211,6 @@
             box-shadow: 0 0 10px rgba(247, 37, 133, 0.5);
         }
 
-        button.active-random {
-            background-color: #4cc9f0;
-            box-shadow: 0 0 15px rgba(76, 201, 240, 0.5);
-        }
-
-        button.pulsing {
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(76, 201, 240, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0);
-            }
-        }
-
         button.ready {
             background-color: #4cc9f0;
             animation: readyPulse 2s infinite;
@@ -252,24 +230,6 @@
 
         button.active {
             background-color: #7209b7;
-        }
-
-        #random {
-            background: linear-gradient(45deg, #f72585, #7209b7, #4361ee, #4cc9f0);
-            background-size: 300% 300%;
-            animation: gradientShift 8s ease infinite;
-        }
-
-        @keyframes gradientShift {
-            0% {
-                background-position: 0% 50%;
-            }
-            50% {
-                background-position: 100% 50%;
-            }
-            100% {
-                background-position: 0% 50%;
-            }
         }
 
         canvas {
@@ -435,7 +395,6 @@
                 lastResult: null, // 'success' or 'failure'
                 lastBucketLanded: null, // Which bucket the ball landed in
                 correctionLevel: "None", // Track what level of correction was needed (None, Slight, Emergency)
-                randomBucketHistory: [] // Track which buckets were selected in random mode
             };
             
             // Resize the canvas to maintain proper size and aspect ratio
@@ -1040,7 +999,6 @@
                         ctx.shadowBlur = 0;
                     }
                     
-                    // Bucket scores disabled
                 });
             }
             
@@ -1505,17 +1463,6 @@
                             });
                         }
                         
-                        // If random mode was active, highlight which bucket was targeted
-                        if (selectedBucket === 'random') {
-                            // Briefly highlight the target bucket that was secretly selected
-                            const targetBucketObj = bucketLocations[targetBucket - 1];
-                            if (targetBucketObj) {
-                                targetBucketObj.highlight = true;
-                                targetBucketObj.highlightColor = 'rgba(100, 255, 100, 0.3)'; // Green glow
-                                targetBucketObj.highlightTime = Date.now();
-                            }
-                        }
-                        
                         // End game immediately instead of waiting
                         isGameActive = false;
                         gameState = 'completed';
@@ -1916,7 +1863,6 @@
                 // Increment total drops counter
                 gameStats.totalDrops++;
                 
-                // Always use selected bucket as target (we no longer have a true random mode)
                 targetBucket = selectedBucket;
                 
                 // Visual feedback - highlight the target bucket briefly
@@ -1940,9 +1886,6 @@
                 // Calculate starting position
                 const initialX = calculateInitialBallPosition();
                 
-                // Record ball start time for timing
-                const dropStartTime = Date.now();
-                
                 // Create ball with initial velocity
                 ball = {
                     x: initialX,
@@ -1958,9 +1901,7 @@
                     collisionTimeout: null,
                     // For visual effects
                     rotation: 0,
-                    rotationSpeed: (Math.random() - 0.5) * 0.2,
-                    // For timing
-                    dropStartTime: dropStartTime
+                    rotationSpeed: (Math.random() - 0.5) * 0.2
                 };
                 
                 // Update UI for current mode
@@ -2104,8 +2045,6 @@
                 
                 // Update statistics and debug panel
                 updateGameStatistics();
-                
-                // Periodic updates no longer needed as we've removed the timer
             }
             
             // Update and display game statistics
