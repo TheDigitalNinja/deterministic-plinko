@@ -100,12 +100,13 @@
                 // Peg configuration
                 pegRadius: 6,
                 pegColor: '#f8f9fa',
-                pegRows: 12,           // Number of rows of pegs
-                pegSpacing: 50,        // Horizontal spacing between pegs
-                pegOffset: 25,         // Additional stagger offset
-                pegGlowIntensity: 0.3, // Intensity of peg glow effect
-                pegHeatmap: false,     // Whether to use heatmap visualization
+                pegRows: 12,            // Number of rows of pegs
+                pegSpacing: 50,         // Horizontal spacing between pegs
+                pegOffset: 25,          // Additional stagger offset
+                pegGlowIntensity: 0.3,  // Intensity of peg glow effect
+                pegHeatmap: false,      // Whether to use heatmap visualization
                 pegInfluenceRadius: 80, // How far a peg's path influence extends
+                pegSoundEnabled: false, // Whether to play sounds on collision
                 
                 // Path influence zones
                 pathZones: [
@@ -120,18 +121,28 @@
                 ballRadius: 10,
                 ballColor: '#f72585',
                 ballTrailLength: 5,
-                ballRestitution: 0.85, // Bounciness factor
+                ballRestitution: 0.85,   // Bounciness factor
+                ballRotationEnabled: true, // Whether ball shows rotation animation
+                ballRotationSpeed: 0.1,   // Base rotation speed
+                ballSpinFactor: 0.2,     // How much horizontal velocity affects rotation
+                
+                // Visual effects
+                enableParticles: true,    // Show particles on collision
+                particleCount: 3,         // Particles per collision
+                particleLifetime: 30,     // How long particles live in frames
+                enableGlowEffects: true,  // Enhanced glow effects
                 
                 // Physics
                 backgroundColor: '#16213e',
                 bucketCount: 5,
                 gravity: 0.3,
-                speedDamping: 0.95,    // Speed loss on wall collision
+                speedDamping: 0.95,       // Speed loss on wall collision
                 
                 // Path control
                 pathControlStrength: 0.25, // Base strength of guidance (0-1)
                 pathControlRamp: 0.03,     // How much control increases as ball descends
-                pathRandomness: 0.3        // Random factor in ball movement (0-1)
+                pathRandomness: 0.3,       // Random factor in ball movement (0-1)
+                enforcedPathGuidance: true // If true, increases guidance dramatically near bottom
             };
             
             // Game state
@@ -148,6 +159,8 @@
             let collisionHistory = [];
             let targetBucket = null;
             let pegPathData = {}; // Stores peg guidance data for visualization
+            let particles = [];   // Particle effects for collisions
+            let lastCollisionPeg = null; // Last peg the ball collided with (to prevent multiple collisions)
             
             // Resize the canvas to maintain proper size and aspect ratio
             function resizeCanvas() {
@@ -290,8 +303,7 @@
                     }
                 }
                 
-                // Initialize the influence map
-                initPegInfluenceMap();
+                // The influence map will be initialized after buckets are created
             }
             
             // Initialize bucket positions
@@ -494,8 +506,24 @@
             // Draw all buckets
             function drawBuckets() {
                 bucketLocations.forEach((bucket, index) => {
+                    // Determine if this bucket is the target for active ball
+                    const isTargetBucket = targetBucket === index + 1;
+                    const isSelectedBucket = selectedBucket === index + 1;
+                    
                     // Draw bucket body
-                    ctx.fillStyle = selectedBucket === index + 1 ? '#f72585' : '#4a4e69';
+                    let bucketColor = isSelectedBucket ? '#f72585' : '#4a4e69';
+                    
+                    // Special visual if bucket is target during active game
+                    if (isTargetBucket && ball && isGameActive) {
+                        // Subtle pulsing effect for target bucket
+                        const pulse = Math.sin(Date.now() / 300) * 20;
+                        const r = 247 - pulse;
+                        const g = 37 + pulse;
+                        const b = 133;
+                        bucketColor = `rgb(${r}, ${g}, ${b})`;
+                    }
+                    
+                    ctx.fillStyle = bucketColor;
                     ctx.fillRect(bucket.x - bucket.width/2, bucket.y, bucket.width, bucket.height);
                     
                     // Draw bucket rim
@@ -507,7 +535,145 @@
                     ctx.font = `${Math.floor(bucket.width / 5)}px Arial`;
                     ctx.textAlign = 'center';
                     ctx.fillText(bucket.number.toString(), bucket.x, bucket.y + bucket.height / 2 + 8);
+                    
+                    // Draw highlight effect for recently hit bucket
+                    if (bucket.highlight) {
+                        const elapsed = Date.now() - bucket.highlightTime;
+                        if (elapsed < 2000) {
+                            // Fade out over time
+                            const alpha = 1 - (elapsed / 2000);
+                            ctx.fillStyle = bucket.highlightColor.replace(')', `, ${alpha})`).replace('rgba', 'rgba');
+                            ctx.fillRect(bucket.x - bucket.width/2, bucket.y, bucket.width, bucket.height);
+                            
+                            // Draw shimmering particles in the target bucket
+                            if (isTargetBucket && elapsed < 1000) {
+                                for (let i = 0; i < 3; i++) {
+                                    const particleX = bucket.x - bucket.width/2 + Math.random() * bucket.width;
+                                    const particleY = bucket.y + Math.random() * bucket.height;
+                                    const particleSize = Math.random() * 4 + 1;
+                                    const particleAlpha = Math.random() * 0.7 + 0.3;
+                                    
+                                    ctx.beginPath();
+                                    ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2);
+                                    ctx.fillStyle = `rgba(255, 215, 0, ${particleAlpha * alpha})`;
+                                    ctx.fill();
+                                }
+                            }
+                        } else {
+                            bucket.highlight = false;
+                        }
+                    }
+                    
+                    // Subtle indicator for target bucket during gameplay
+                    if (isTargetBucket && isGameActive && ball) {
+                        // Draw arrow or indicator pointing to this bucket
+                        const arrowY = bucket.y - 15;
+                        const arrowWidth = 20;
+                        const arrowHeight = 10;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(bucket.x - arrowWidth/2, arrowY);
+                        ctx.lineTo(bucket.x + arrowWidth/2, arrowY);
+                        ctx.lineTo(bucket.x, arrowY + arrowHeight);
+                        ctx.closePath();
+                        
+                        // Pulsing opacity based on time
+                        const arrowAlpha = 0.3 + Math.sin(Date.now() / 200) * 0.2;
+                        ctx.fillStyle = `rgba(255, 255, 255, ${arrowAlpha})`;
+                        ctx.fill();
+                    }
                 });
+            }
+            
+            // Create a particle effect for a collision
+            function createParticles(x, y, count, color, speedFactor = 1) {
+                if (!GAME_CONFIG.enableParticles) return;
+                
+                for (let i = 0; i < count; i++) {
+                    // Random direction
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = (Math.random() * 2 + 1) * speedFactor;
+                    
+                    particles.push({
+                        x: x,
+                        y: y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        radius: Math.random() * 3 + 1,
+                        color: color || '#ffffff',
+                        alpha: 1,
+                        life: GAME_CONFIG.particleLifetime,
+                        gravity: 0.05 * Math.random()
+                    });
+                }
+            }
+            
+            // Update and draw all particles
+            function updateParticles() {
+                // Update particles
+                particles = particles.filter(p => {
+                    // Update position
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    
+                    // Apply gravity
+                    p.vy += p.gravity;
+                    
+                    // Fade out
+                    p.alpha = p.life / GAME_CONFIG.particleLifetime;
+                    p.life--;
+                    
+                    // Draw particle
+                    if (p.life > 0) {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fillStyle = p.color.replace(')', `, ${p.alpha})`).replace('rgb', 'rgba');
+                        ctx.fill();
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            
+            // Draw the ball with rotation effect
+            function drawBallWithRotation() {
+                if (!GAME_CONFIG.ballRotationEnabled || !ball) return;
+                
+                // Update rotation based on horizontal velocity
+                ball.rotation += GAME_CONFIG.ballRotationSpeed + 
+                               (ball.velocityX * GAME_CONFIG.ballSpinFactor);
+                
+                // Draw ball body
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = ball.color;
+                ctx.fill();
+                
+                // Draw highlight (static, doesn't rotate)
+                ctx.beginPath();
+                const highlightRadius = ball.radius * 0.3;
+                ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fill();
+                
+                // Draw rotation lines/patterns
+                const lines = 3;
+                for (let i = 0; i < lines; i++) {
+                    const angle = ball.rotation + (i * (Math.PI * 2 / lines));
+                    
+                    // Draw a line from center to edge
+                    const startX = ball.x + Math.cos(angle) * (ball.radius * 0.3);
+                    const startY = ball.y + Math.sin(angle) * (ball.radius * 0.3);
+                    const endX = ball.x + Math.cos(angle) * (ball.radius * 0.9);
+                    const endY = ball.y + Math.sin(angle) * (ball.radius * 0.9);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
             }
             
             // Draw the ball and its trail effects
@@ -528,18 +694,23 @@
                     }
                 }
                 
-                // Draw ball itself with base color
-                ctx.beginPath();
-                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-                ctx.fillStyle = ball.color;
-                ctx.fill();
-                
-                // Add highlight effect without using gradient that might make it look white
-                ctx.beginPath();
-                const highlightRadius = ball.radius * 0.3;
-                ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.fill();
+                // Draw the actual ball (either with rotation or simple)
+                if (GAME_CONFIG.ballRotationEnabled) {
+                    drawBallWithRotation();
+                } else {
+                    // Simple ball without rotation
+                    ctx.beginPath();
+                    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = ball.color;
+                    ctx.fill();
+                    
+                    // Add highlight
+                    ctx.beginPath();
+                    const highlightRadius = ball.radius * 0.3;
+                    ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.fill();
+                }
                 
                 // Draw sparkle effect on recent collisions
                 collisionHistory.forEach(collision => {
@@ -557,6 +728,9 @@
                 
                 // Remove old collision effects
                 collisionHistory = collisionHistory.filter(c => c.age <= 5);
+                
+                // Update and draw particles
+                updateParticles();
             }
             
             // Add a position to the ball trail
@@ -578,7 +752,12 @@
                 
                 let hasCollided = false;
                 
-                for (const peg of pegLocations) {
+                for (let i = 0; i < pegLocations.length; i++) {
+                    const peg = pegLocations[i];
+                    
+                    // Skip if this is the same peg as the last collision (prevents multiple collisions with same peg)
+                    if (lastCollisionPeg === i && ball.recentCollision) continue;
+                    
                     // Calculate distance between ball and peg centers
                     const dx = ball.x - peg.x;
                     const dy = ball.y - peg.y;
@@ -588,6 +767,11 @@
                     const minDistance = ball.radius + peg.radius;
                     if (distance < minDistance) {
                         hasCollided = true;
+                        
+                        // Track this collision
+                        lastCollisionPeg = i;
+                        ball.recentCollision = true;
+                        ball.collisionCount++;
                         
                         // Calculate collision response
                         const angle = Math.atan2(dy, dx);
@@ -602,11 +786,30 @@
                         const incomingAngle = Math.atan2(ball.velocityY, ball.velocityX);
                         const reflectionAngle = 2 * angle - incomingAngle;
                         
-                        // Add randomness to reflection
-                        const randomFactor = (Math.random() - 0.5) * GAME_CONFIG.pathRandomness;
-                        const finalAngle = reflectionAngle + randomFactor;
+                        // Calculate how much influence this peg should have
+                        let guidanceModifier = 0;
+                        if (pegPathData[i] && pegPathData[i].influence) {
+                            const influence = pegPathData[i].influence;
+                            // Apply stronger guidance as ball falls lower
+                            const verticalPosition = ball.y / canvas.height;
+                            guidanceModifier = influence.direction * influence.strength * 
+                                              (0.1 + verticalPosition * 0.3);
+                        }
                         
-                        // Set new velocity with higher minimum speed guarantee
+                        // Add randomness to reflection (less random if enforcing path)
+                        let randomFactor = (Math.random() - 0.5) * GAME_CONFIG.pathRandomness;
+                        
+                        // Apply additional bias near the bottom to ensure landing in target bucket
+                        if (GAME_CONFIG.enforcedPathGuidance && ball.y > canvas.height * 0.7) {
+                            const strengthMultiplier = (ball.y - canvas.height * 0.7) / (canvas.height * 0.3);
+                            guidanceModifier *= (1 + strengthMultiplier * 2);
+                            randomFactor *= (1 - strengthMultiplier); // Less randomness near bottom
+                        }
+                        
+                        // Final angle includes reflection, randomness, and guidance
+                        const finalAngle = reflectionAngle + randomFactor + guidanceModifier;
+                        
+                        // Set new velocity with minimum speed guarantee
                         const newSpeed = Math.max(speed * GAME_CONFIG.ballRestitution, 3.0);
                         ball.velocityX = Math.cos(finalAngle) * newSpeed;
                         ball.velocityY = Math.sin(finalAngle) * newSpeed;
@@ -617,14 +820,40 @@
                             ball.velocityY += ball.velocityY >= 0 ? verticalBoost : -verticalBoost;
                         }
                         
-                        // Add to collision history for visual effects
+                        // Visual feedback - add to collision history
                         collisionHistory.push({
                             x: ball.x,
                             y: ball.y,
                             age: 0
                         });
                         
-                        // Small audio feedback could be added here
+                        // Create particle effects if function exists
+                        if (typeof createParticles === 'function') {
+                            createParticles(
+                                ball.x, 
+                                ball.y, 
+                                GAME_CONFIG.particleCount, 
+                                ball.color, 
+                                newSpeed * 0.2
+                            );
+                        }
+                        
+                        // Add extra emphasis to active pegs
+                        if (pegPathData[i]) {
+                            pegPathData[i].isActive = true;
+                            pegPathData[i].activationTime = Date.now();
+                        }
+                        
+                        // Prevent multiple collisions with same peg - use standard clearTimeout approach
+                        ball.recentCollision = true;
+                        if (ball.collisionTimeout) {
+                            clearTimeout(ball.collisionTimeout);
+                        }
+                        ball.collisionTimeout = setTimeout(() => {
+                            ball.recentCollision = false;
+                        }, 100);
+                        
+                        break; // Only handle one collision per frame for smoother physics
                     }
                 }
             }
@@ -648,15 +877,37 @@
                     ) {
                         // Ball landed in a bucket
                         const landedInTargetBucket = (i + 1) === targetBucket;
+                        const bucketNumber = i + 1;
                         
                         // Visual feedback for landing
                         ball.velocityX = 0;
-                        ball.velocityY = 0;
+                        ball.velocityY = Math.min(ball.velocityY * 0.3, 2); // Slow down but keep some movement
                         
-                        // Create a burst of collision effects
-                        for (let j = 0; j < 10; j++) {
+                        // Celebration particle effects
+                        const particleColors = landedInTargetBucket ? 
+                            ['rgb(255, 200, 50)', 'rgb(255, 100, 100)', 'rgb(100, 200, 255)'] : 
+                            [ball.color];
+                        
+                        // Create a burst of particles
+                        const particleCount = landedInTargetBucket ? 30 : 15;
+                        const baseFactor = landedInTargetBucket ? 1.5 : 1.0;
+                        
+                        // Add visual impact with burst of particles
+                        for (let j = 0; j < particleCount; j++) {
+                            const colorIndex = Math.floor(Math.random() * particleColors.length);
+                            createParticles(
+                                ball.x + (Math.random() - 0.5) * 10, 
+                                ball.y + (Math.random() - 0.5) * 10,
+                                1, // Just one particle per call 
+                                particleColors[colorIndex],
+                                baseFactor + Math.random()
+                            );
+                        }
+                        
+                        // Create a burst of collision sparks
+                        for (let j = 0; j < 15; j++) {
                             const angle = Math.random() * Math.PI * 2;
-                            const distance = Math.random() * bucket.width * 0.3;
+                            const distance = Math.random() * bucket.width * 0.4;
                             collisionHistory.push({
                                 x: ball.x + Math.cos(angle) * distance,
                                 y: ball.y + Math.sin(angle) * distance,
@@ -664,19 +915,70 @@
                             });
                         }
                         
+                        // Handle success/failure visualization
+                        if (landedInTargetBucket) {
+                            // Ball successfully landed in target
+                            bucket.highlight = true;
+                            bucket.highlightColor = 'rgba(255, 215, 0, 0.3)'; // Gold glow
+                            bucket.highlightTime = Date.now();
+                            
+                            // Create a glowing effect in the bucket
+                            const glowY = bucket.y + bucket.height * 0.6;
+                            ctx.beginPath();
+                            const gradientHeight = bucket.height * 0.4;
+                            const glow = ctx.createLinearGradient(0, glowY - gradientHeight, 0, glowY);
+                            glow.addColorStop(0, 'rgba(255, 215, 0, 0)');
+                            glow.addColorStop(1, 'rgba(255, 215, 0, 0.4)');
+                            ctx.fillStyle = glow;
+                            ctx.fillRect(bucket.x - bucket.width/2, glowY - gradientHeight, bucket.width, gradientHeight);
+                        } else {
+                            // Ball landed in wrong bucket
+                            bucket.highlight = true;
+                            bucket.highlightColor = 'rgba(255, 100, 100, 0.3)'; // Red glow
+                            bucket.highlightTime = Date.now();
+                        }
+                        
+                        // Display the result on screen
+                        const resultElement = document.createElement('div');
+                        resultElement.style.position = 'absolute';
+                        resultElement.style.left = bucket.x + 'px';
+                        resultElement.style.top = (bucket.y - 50) + 'px';
+                        resultElement.style.fontSize = '24px';
+                        resultElement.style.fontWeight = 'bold';
+                        resultElement.style.textAlign = 'center';
+                        resultElement.style.transform = 'translate(-50%, -50%)';
+                        resultElement.style.color = landedInTargetBucket ? 'gold' : 'red';
+                        resultElement.style.textShadow = '0 0 5px rgba(0,0,0,0.7)';
+                        resultElement.style.opacity = '0';
+                        resultElement.style.transition = 'opacity 0.3s, transform 1s';
+                        
+                        resultElement.textContent = landedInTargetBucket ? 
+                            'SUCCESS!' : 
+                            'MISSED';
+                        
+                        document.querySelector('.game-container').appendChild(resultElement);
+                        
+                        // Animate the result message
+                        setTimeout(() => {
+                            resultElement.style.opacity = '1';
+                            resultElement.style.transform = 'translate(-50%, -100%)';
+                        }, 10);
+                        
                         // End game after a short delay
                         setTimeout(() => {
                             isGameActive = false;
                             dropButton.disabled = false;
                             cancelAnimationFrame(animationFrameId);
                             
-                            // Show result notification - this could be enhanced
-                            if (landedInTargetBucket) {
-                                console.log('Ball landed in the target bucket!');
-                            } else {
-                                console.log(`Ball landed in bucket ${i+1} instead of ${targetBucket}`);
-                            }
-                        }, 500);
+                            // Remove the result element
+                            setTimeout(() => {
+                                resultElement.style.opacity = '0';
+                                setTimeout(() => {
+                                    resultElement.remove();
+                                }, 500);
+                            }, 1500);
+                            
+                        }, 1000);
                         
                         return true;
                     }
@@ -826,6 +1128,8 @@
                 resizeCanvas();
                 initPegs();
                 initBuckets();
+                // Initialize peg influence map after both pegs and buckets exist
+                initPegInfluenceMap();
                 addEventListeners();
                 drawGame();
             }
@@ -861,6 +1165,7 @@
                 // Clear previous state
                 ballTrail = [];
                 collisionHistory = [];
+                lastCollisionPeg = null;
                 
                 // If random mode is selected, choose a random bucket
                 if (selectedBucket === 'random') {
@@ -886,6 +1191,8 @@
                     // Track additional state
                     targetBucket: targetBucket,
                     collisionCount: 0,
+                    recentCollision: false,
+                    collisionTimeout: null,
                     // For visual effects
                     rotation: 0,
                     rotationSpeed: (Math.random() - 0.5) * 0.2
