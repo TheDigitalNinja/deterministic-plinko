@@ -318,7 +318,7 @@
                 // Peg configuration
                 pegRadius: 6,
                 pegColor: '#f8f9fa',
-                pegRows: 12,            // Number of rows of pegs
+                pegRows: 15,            // Increased number of rows of pegs
                 pegSpacing: 50,         // Horizontal spacing between pegs
                 pegOffset: 25,          // Additional stagger offset
                 pegGlowIntensity: 0.3,  // Intensity of peg glow effect
@@ -371,12 +371,12 @@
                 speedDamping: 0.95,       // Speed loss on wall collision
                 
                 // Path control
-                pathControlStrength: 0.4,  // Base strength of guidance (0-1) - increased for reliability
-                pathControlRamp: 0.06,     // How much control increases as ball descends - doubled
-                pathRandomness: 0.2,       // Random factor in ball movement (0-1) - reduced for more control
+                pathControlStrength: 0.5,  // Base strength of guidance (0-1) - increased for more reliability
+                pathControlRamp: 0.1,      // How much control increases as ball descends - increased
+                pathRandomness: 0.1,       // Random factor in ball movement (0-1) - reduced for more control
                 enforcedPathGuidance: true, // If true, increases guidance dramatically near bottom
                 guaranteedLanding: true,    // Ensures ball ALWAYS lands in target bucket
-                enforcementZone: 0.7       // Height threshold (as % of canvas) where strong enforcement begins
+                enforcementZone: 0.65      // Height threshold (as % of canvas) where strong enforcement begins
             };
             
             // Game state
@@ -509,7 +509,7 @@
             function initPegs() {
                 pegLocations = [];
                 const startX = canvas.width / 2;
-                const startY = canvas.height * 0.15;
+                const startY = canvas.height * 0.08; // Reduced top spacing
                 
                 // Distribute pegs across the full width of the canvas
                 // Calculate proper spacing based on desired number of pegs in bottom row
@@ -526,7 +526,7 @@
                 // Row 2: Three pegs, with center one in middle
                 // Etc. until we reach the maximum row with pegs spanning the full width
                 
-                // Create the peg grid - proper triangle
+                // Create the peg grid - proper triangle with less blank space
                 for (let row = 0; row < GAME_CONFIG.pegRows; row++) {
                     // Calculate pegs in this row - we want to reach maxRowPegs in the last row
                     // Use a linear progression from 1 to maxRowPegs
@@ -562,8 +562,8 @@
             function initBuckets() {
                 bucketLocations = [];
                 
-                // Bucket dimensions
-                const bucketY = canvas.height * (1 - GAME_CONFIG.bucketDepth);
+                // Bucket dimensions - position closer to bottom pegs
+                const bucketY = canvas.height * 0.85;
                 const bucketHeight = canvas.height * GAME_CONFIG.bucketDepth;
                 
                 // Simple approach: 5 equal buckets across the entire canvas width
@@ -1509,6 +1509,7 @@
                                     bucket.landedBall = null;
                                     ball = null;
                                     ballTrail = [];
+                                    collisionHistory = [];
                                     clearInterval(slowDownInterval);
                                 }
                             } else {
@@ -1585,7 +1586,7 @@
                 // Calculate guidance strength based on vertical position (increases as ball falls)
                 const verticalProgress = (ball.y / canvas.height);
                 let guidanceStrength = GAME_CONFIG.pathControlStrength + 
-                                     (verticalProgress * GAME_CONFIG.pathControlRamp);
+                                     (verticalProgress * verticalProgress * GAME_CONFIG.pathControlRamp); // Exponential increase
                 
                 // CRITICAL: Check if we're in the enforcement zone (near bottom of board)
                 // This ensures the ball ALWAYS lands in the correct bucket (legal requirement)
@@ -1684,13 +1685,17 @@
                     }
                     
                     // If we're VERY close to the bottom and not aligned, apply emergency correction
-                    if (verticalProgress > 0.9 && Math.abs(dx) > targetWidth * 0.5) {
+                    if (verticalProgress > 0.85 && Math.abs(dx) > targetWidth * 0.5) {
                         // Strong direct velocity adjustment
                         ball.velocityX = Math.sign(dx) * 3;
                         
+                        // Apply stronger correction near the bottom
+                        // The closer to the bottom, the stronger the correction
+                        const correctionPower = Math.min((verticalProgress - 0.85) * 15, 1);
+                        
                         // If EXTREMELY close to bottom, just move the ball directly
-                        if (verticalProgress > 0.95) {
-                            ball.x += dx * 0.3; // Move 30% closer to target each frame
+                        if (verticalProgress > 0.9) {
+                            ball.x += dx * correctionPower * 0.4; // Move closer to target each frame
                         }
                     }
                 }
@@ -1722,35 +1727,21 @@
                 }
                 
                 // Check if ball is near the bottom without landing in a bucket
-                if (ball.y - ball.radius > canvas.height * 0.95) {
+                if (ball.y - ball.radius > canvas.height * 0.92) {
                     // FAILSAFE: Ball should NEVER miss - this is a legal requirement
-                    // If we somehow get here, find the closest bucket to the ball
-                    // and force it into that bucket
+                    // If we somehow get here, force the ball into the target bucket directly
+                    // We're not even trying to find the closest bucket anymore - ALWAYS go to target
+                    const target = bucketLocations[targetBucket - 1];
                     
-                    // Default to target bucket
-                    let closestBucket = bucketLocations[targetBucket - 1];
+                    // Force ball to align with the target bucket
+                    ball.x = target.x;
                     
-                    // If the ball is clearly heading toward a bucket other than the target
-                    // and we're very close to the bottom, accept that bucket instead
-                    // This prevents jarring last-moment corrections
-                    let minDistance = Math.abs(closestBucket.x - ball.x);
+                    // Set a moderate downward velocity to ensure it completes the landing
+                    ball.velocityX = 0;
+                    ball.velocityY = 3;
                     
-                    bucketLocations.forEach(bucket => {
-                        const distance = Math.abs(bucket.x - ball.x);
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestBucket = bucket;
-                        }
-                    });
-                    
-                    // Force the ball into the correct bucket
-                    ball.x = closestBucket.x;
-                    
-                    // If this is NOT the target bucket, correct it to be the target
-                    // This should be extremely rare but ensures legal compliance
-                    if (closestBucket.number !== targetBucket) {
-                        ball.x = bucketLocations[targetBucket - 1].x;
-                    }
+                    // Log emergency correction (visible only in debug console) to track occurrences
+                    console.log("Emergency bucket correction applied");
                 }
                 
                 // Absolute failsafe: prevent ball from going completely out of bounds
