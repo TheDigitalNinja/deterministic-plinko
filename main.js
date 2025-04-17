@@ -1243,49 +1243,21 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(gameLoop); 
     }
     
-    // Get initial ball position - Optimized for maximum natural landing success rate
+    // Get initial ball position - Always start near center for unpredictability
     function calculateInitialBallPosition(targetBucketNum) {
-        // Get target bucket position
-        const target = bucketLocations[targetBucketNum - 1];
-        if (!target) return canvas.width / 2;
+        // Always start near the center, regardless of target bucket
+        // This prevents players from predicting the outcome based on starting position
         
-        // For regulated gambling games, initial position is critical for natural path generation
-        // Multiple strategies based on which bucket is targeted
-        let xPos;
+        // Base position is center of canvas
+        const centerX = canvas.width / 2;
         
-        // Hard-coded starting positions that have been empirically tested to work
-        // These are the most reliable positions to start from for each bucket
-        switch(targetBucketNum) {
-            case 1: // Leftmost bucket strategy
-                // Start above and slightly right of the bucket
-                xPos = target.x + target.width * 0.5;
-                break;
-                
-            case GAME_CONFIG.bucketCount: // Rightmost bucket strategy
-                // Start above and slightly left of the bucket
-                xPos = target.x - target.width * 0.5;
-                break;
-                
-            case 2: // Second bucket strategy
-                // Start from above-right to approach from right side
-                xPos = target.x + target.width * 0.8;
-                break;
-                
-            case GAME_CONFIG.bucketCount - 1: // Second-to-last bucket strategy
-                // Start from above-left to approach from left side
-                xPos = target.x - target.width * 0.8;
-                break;
-                
-            default: // Middle buckets strategy
-                // Start more directly above with slight offset
-                xPos = target.x + (Math.random() - 0.5) * target.width * 0.5;
-                break;
-        }
+        // Add small random offset from center (within 20% of canvas width)
+        // This maintains unpredictability while still allowing successful paths
+        const maxOffset = canvas.width * 0.1; // 10% of canvas width to either side
+        const randomOffset = (Math.random() - 0.5) * maxOffset;
         
-        // Add small controlled randomness for natural appearance
-        // Less randomness = more predictable landing
-        const randomAmount = Math.min(20, target.width * 0.2);
-        xPos += (Math.random() - 0.5) * randomAmount;
+        // Calculate final position
+        let xPos = centerX + randomOffset;
         
         // Ensure within bounds
         xPos = Math.max(GAME_CONFIG.ballRadius + 5, Math.min(canvas.width - GAME_CONFIG.ballRadius - 5, xPos));
@@ -1327,35 +1299,49 @@ document.addEventListener('DOMContentLoaded', () => {
             currentX = startX;
             currentY = startY;
             
-            // Enhanced velocity setup for better bucket targeting
-            // Calculate how far starting position is from target bucket
-            const distanceFromTarget = Math.abs(startX - targetBucket.x);
-            const maxDistance = canvas.width / 2;
-            const distanceFactor = distanceFromTarget / maxDistance; // 0-1 factor
+            // Enhanced initial velocity setup for better path finding from center
+            // Calculate distance from starting position to target bucket
+            const distanceToTarget = targetBucket.x - startX;
+            const bucketWidth = canvas.width / GAME_CONFIG.bucketCount;
             
-            // Adjust initial velocity based on distance from target
-            // Further away = more bias toward target
-            let initialBias = 0;
-            if (startX < targetBucket.x) {
-                // Need to drift right
-                initialBias = 0.3 + distanceFactor * 0.7; // 0.3-1.0 right bias
-            } else if (startX > targetBucket.x) {
-                // Need to drift left
-                initialBias = -(0.3 + distanceFactor * 0.7); // 0.3-1.0 left bias
+            // Apply variable initial bias based on target bucket
+            // Edge buckets need stronger bias, middle buckets need less
+            let edgeFactor = 0;
+            if (targetBucketIndex === 1 || targetBucketIndex === GAME_CONFIG.bucketCount) {
+                // Edge buckets need more help
+                edgeFactor = 1.0;
+            } else if (targetBucketIndex === 2 || targetBucketIndex === GAME_CONFIG.bucketCount - 1) {
+                // Near-edge buckets need moderate help
+                edgeFactor = 0.7;
+            } else {
+                // Middle buckets need less bias
+                edgeFactor = 0.4;
             }
             
-            // Set initial horizontal velocity with controlled randomness + bias toward target
-            currentVx = (Math.random() - 0.5) * (1.5 - distanceFactor * 0.5) + initialBias;
+            // Calculate initial velocity that makes sense for this path attempt
+            // Scale direction based on distance and bucket position
+            const baseVelocity = Math.sign(distanceToTarget) * 
+                                Math.min(Math.abs(distanceToTarget) / 100, 1.5) * 
+                                edgeFactor;
             
-            // Further tuning for edge buckets
-            if (targetBucketIndex === 1) {
-                currentVx = Math.max(0, currentVx) + 0.3; // Ensure positive (right) bias for bucket 1
-            } else if (targetBucketIndex === GAME_CONFIG.bucketCount) {
-                currentVx = Math.min(0, currentVx) - 0.3; // Ensure negative (left) bias for bucket 5
+            // Add controlled randomness to make paths look natural
+            // Less randomness for edge buckets
+            const randomFactor = (1 - Math.abs(edgeFactor - 0.5)) * 0.8;
+            currentVx = baseVelocity + (Math.random() - 0.5) * randomFactor;
+            
+            // Add a slight extra nudge for extreme edge buckets
+            if (targetBucketIndex === 1 && currentVx > -0.2) {
+                // First bucket needs left bias
+                currentVx -= 0.5 + Math.random() * 0.5;
+            } else if (targetBucketIndex === GAME_CONFIG.bucketCount && currentVx < 0.2) {
+                // Last bucket needs right bias
+                currentVx += 0.5 + Math.random() * 0.5;
             }
             
-            // Vary vertical velocity less for more predictable arcs
-            currentVy = 1.2 + Math.random() * 0.4;
+            // Vary vertical velocity for a more natural look
+            // Faster initial drop for edge buckets to increase momentum
+            const baseVertical = 1.0 + edgeFactor * 0.4;
+            currentVy = baseVertical + Math.random() * 0.3;
             hitCount = 0;
             hitWall = false;
             lastHitTime = -Infinity; // Reset lastHitTime
@@ -2089,9 +2075,10 @@ function handleDropBall() {
     lastTimestamp = 0;
     
     // Try multiple starting positions until we find one that works
+    // Since we're now always starting near center, we might need more attempts
     let validPathFound = false;
     let attempts = 0;
-    const maxAttempts = 50;
+    const maxAttempts = 100; // Increased to accommodate center-only starting positions
     
     // Store the final verified values
     let verifiedStartX = null;
