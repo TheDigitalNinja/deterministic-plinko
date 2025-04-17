@@ -33,9 +33,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ballColor: '#f72585',
         ballTrailLength: 5,
         ballRestitution: 0.85,   // Bounciness factor
-        ballRotationEnabled: true, // Whether ball shows rotation animation
-        ballRotationSpeed: 0.1,   // Base rotation speed
-        ballSpinFactor: 0.2,     // How much horizontal velocity affects rotation
         
         // Visual effects
         enableParticles: true,    // Show particles on collision
@@ -756,47 +753,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Draw the ball with rotation effect
-    function drawBallWithRotation() {
-        if (!GAME_CONFIG.ballRotationEnabled || !ball) return;
-        
-        // Update rotation based on horizontal velocity
-        ball.rotation += GAME_CONFIG.ballRotationSpeed + 
-                       (ball.velocityX * GAME_CONFIG.ballSpinFactor);
-        
-        // Draw ball body
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-        ctx.fillStyle = ball.color;
-        ctx.fill();
-        
-        // Draw highlight (static, doesn't rotate)
-        ctx.beginPath();
-        const highlightRadius = ball.radius * 0.3;
-        ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.fill();
-        
-        // Draw rotation lines/patterns
-        const lines = 3;
-        for (let i = 0; i < lines; i++) {
-            const angle = ball.rotation + (i * (Math.PI * 2 / lines));
-            
-            // Draw a line from center to edge
-            const startX = ball.x + Math.cos(angle) * (ball.radius * 0.3);
-            const startY = ball.y + Math.sin(angle) * (ball.radius * 0.3);
-            const endX = ball.x + Math.cos(angle) * (ball.radius * 0.9);
-            const endY = ball.y + Math.sin(angle) * (ball.radius * 0.9);
-            
-            ctx.beginPath();
-            ctx.moveTo(startX, startY);
-            ctx.lineTo(endX, endY);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-    }
-    
     // Draw the ball and its trail effects
     function drawBall() {
         if (!ball) return;
@@ -815,23 +771,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Draw the actual ball (either with rotation or simple)
-        if (GAME_CONFIG.ballRotationEnabled) {
-            drawBallWithRotation();
-        } else {
-            // Simple ball without rotation
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fillStyle = ball.color;
-            ctx.fill();
-            
-            // Add highlight
-            ctx.beginPath();
-            const highlightRadius = ball.radius * 0.3;
-            ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.fill();
-        }
+        // Draw the actual ball
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = ball.color;
+        ctx.fill();
+        
+        // Add highlight
+        ctx.beginPath();
+        const highlightRadius = ball.radius * 0.3;
+        ctx.arc(ball.x - ball.radius * 0.3, ball.y - ball.radius * 0.3, highlightRadius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fill();
         
         // Draw sparkle effect on recent collisions
         collisionHistory.forEach(collision => {
@@ -1797,9 +1748,6 @@ document.addEventListener('DOMContentLoaded', () => {
             collisionCount: 0,
             recentCollision: false,
             collisionTimeout: null,
-            // For visual effects
-            rotation: 0,
-            rotationSpeed: (Math.random() - 0.5) * 0.2
         };
         
         // Update UI for current mode
