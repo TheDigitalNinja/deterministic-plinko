@@ -495,53 +495,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Draw bucket with 3D effect
-    function drawBucket3D(bucket, color, highlighted = false) {
+    function drawBucket(bucket, color, highlighted = false) {
         const x = bucket.x - bucket.width / 2;
         const y = bucket.y;
         const width = bucket.width;
         const height = bucket.height;
         const rimThickness = GAME_CONFIG.bucketRimThickness;
-        
-        // Create shadow/depth gradient at bottom of bucket
-        const depthGradient = ctx.createLinearGradient(0, y + height * 0.7, 0, y + height);
-        depthGradient.addColorStop(0, color);
-        depthGradient.addColorStop(1, shadeColor(color, -30)); // Darker at bottom
-        
-        // Draw main bucket body with depth gradient
-        ctx.fillStyle = depthGradient;
+
+        // Draw main bucket body as a solid color
+        ctx.fillStyle = color;
         ctx.fillRect(x, y, width, height);
-        
-        // Draw left side shadow for 3D effect
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        ctx.fillRect(x, y, width * 0.1, height);
-        
-        // Draw right side highlight for 3D effect
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.fillRect(x + width * 0.9, y, width * 0.1, height);
-        
-        // Draw bucket rim with 3D effect
-        ctx.fillStyle = bucket.rimColor || shadeColor(color, -20);
-        ctx.fillRect(x, y, width, rimThickness);
-        
-        // Draw rim highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.fillRect(x, y, width, rimThickness / 2);
-        
-        // If bucket is highlighted, add special effects
-        if (highlighted) {
-            // Add glow effect around the rim
-            const glowGradient = ctx.createRadialGradient(
-                bucket.x, y, 0,
-                bucket.x, y, width / 2
-            );
-            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
-            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(x, y - rimThickness, width, rimThickness * 2);
+
+        // Draw borders: only left border for first bucket, right border for all
+        ctx.save();
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = rimThickness;
+        if (bucket.number === 1) {
+            // Left border for first bucket
+            ctx.beginPath();
+            ctx.moveTo(x + rimThickness / 2, y);
+            ctx.lineTo(x + rimThickness / 2, y + height);
+            ctx.stroke();
         }
-        
-        // Draw bucket number with shadow for better visibility
+        // Right border for all buckets
+        ctx.beginPath();
+        ctx.moveTo(x + width - rimThickness / 2, y);
+        ctx.lineTo(x + width - rimThickness / 2, y + height);
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw bucket number centered, always white
         ctx.fillStyle = '#ffffff';
         ctx.font = `bold ${Math.floor(bucket.width / 5)}px Arial`;
         ctx.textAlign = 'center';
@@ -618,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Draw the 3D bucket with appropriate color
-            drawBucket3D(bucket, bucketColor, isTargetBucket);
+            drawBucket(bucket, bucketColor, isTargetBucket);
             
             // Draw ambient particles inside bucket
             drawBucketParticles(bucket);
