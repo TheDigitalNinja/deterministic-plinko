@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let pegPathData = {}; // Stores peg guidance data for visualization
     let particles = [];   // Particle effects for collisions
     let lastCollisionPeg = null; // Last peg the ball collided with (to prevent multiple collisions)
+    let currentCleanupInterval = null; // Added to track the cleanup timer
     let gameStats = {
         totalDrops: 0,
         successfulDrops: 0,
@@ -939,7 +940,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     clearTimeout(ball.collisionTimeout);
                 }
                 ball.collisionTimeout = setTimeout(() => {
-                    ball.recentCollision = false;
+                    if (ball) {
+                        ball.recentCollision = false;
+                    }
                 }, 100);
                 
                 break; // Only handle one collision per frame for smoother physics
@@ -1195,16 +1198,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (Date.now() - bucket.highlightTime > 1500) {
                             // Save the bucket info but clear the ball
                             bucket.landedBall = null;
+                            console.log('Ball cleanup: Setting ball to null via slowDownInterval.'); // Added log
                             ball = null;
                             ballTrail = [];
                             collisionHistory = [];
                             clearInterval(slowDownInterval);
+                            currentCleanupInterval = null; // Reset the global ID
                         }
                     } else {
                         clearInterval(slowDownInterval);
+                        currentCleanupInterval = null; // Reset the global ID
                     }
                 }, 100);
-                
+                currentCleanupInterval = slowDownInterval; // Store the new interval ID
+
                 return true;
             }
         }
@@ -1444,7 +1451,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update position based on velocity
         ball.x += ball.velocityX * deltaTime;
         ball.y += ball.velocityY * deltaTime;
-        
+
+        // *** ADDED CHECK FOR INVALID PHYSICS VALUES ***
+        if (!isFinite(ball.x) || !isFinite(ball.y) || !isFinite(ball.velocityX) || !isFinite(ball.velocityY)) {
+            console.error('CRITICAL PHYSICS ERROR: Ball state became invalid!', {
+                x: ball.x,
+                y: ball.y,
+                vx: ball.velocityX,
+                vy: ball.velocityY,
+                targetBucket: targetBucket,
+                collisionCount: ball.collisionCount,
+                verticalProgress: ball.y / canvas.height
+            });
+            // To prevent further errors, we could stop the game here, but let's just log for now.
+            // isGameActive = false;
+            // ball = null; // This would make it disappear, confirming the error location
+        }
+        // *** END ADDED CHECK ***
+
         // Check for collisions with pegs
         checkPegCollisions();
         
@@ -1667,6 +1691,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Create the ball at the top of the screen
     function createBall() {
+        // *** ADDED: Cancel any existing cleanup timer ***
+        if (currentCleanupInterval) {
+            console.log('Cancelling previous cleanup interval due to new ball drop.');
+            clearInterval(currentCleanupInterval);
+            currentCleanupInterval = null;
+            // If a ball object still exists from the previous drop, ensure its bucket reference is cleared
+            // This prevents visual glitches if the bucket still thinks it has a ball
+            bucketLocations.forEach(bucket => {
+                if (bucket.landedBall) { // Check if any bucket still references a ball
+                    bucket.landedBall = null;
+                }
+            });
+        }
+        // *** END ADDED CODE ***
+
         // Clear previous state
         ballTrail = [];
         collisionHistory = [];
@@ -1732,7 +1771,9 @@ document.addEventListener('DOMContentLoaded', () => {
             recentCollision: false,
             collisionTimeout: null,
         };
-        
+
+        console.log(`Ball dropped: Target=${targetBucket}, StartX=${ball.x.toFixed(2)}, StartY=${ball.y.toFixed(2)}`); // Added log
+
         // Update UI for current mode
         updateModeUI();
         
@@ -1760,6 +1801,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Reset the ball to the top of the screen
     function resetBall() {
+        // *** ADDED: Cancel cleanup timer on reset ***
+        if (currentCleanupInterval) {
+            console.log('Cancelling cleanup interval due to reset.');
+            clearInterval(currentCleanupInterval);
+            currentCleanupInterval = null;
+        }
+        // *** END ADDED CODE ***
+
         // Clear ball and related state
         ball = null;
         ballTrail = [];
@@ -1858,7 +1907,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Prevent double-counting - only count first landing per ball drop
         if (landingHandled) return;
         landingHandled = true;
-        
+
+        console.log(`Ball landed: Bucket=${bucketNumber}, TargetMatch=${isTargetBucket}`); // Added log
+
         // Update game statistics
         gameStats.lastBucketLanded = bucketNumber;
         
