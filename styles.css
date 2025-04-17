@@ -1,11 +1,23 @@
-body {
+/* CSS Reset */
+* {
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+
+body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    height: 100vh;
+    justify-content: flex-start;
+    min-height: 100vh;
+    padding: 20px;
     background-color: #1a1a2e;
     font-family: Arial, sans-serif;
     color: #fff;
