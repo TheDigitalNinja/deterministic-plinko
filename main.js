@@ -1925,7 +1925,9 @@ function gameLoop(timestamp) {
     }
     
     // Calculate time difference between frames
-    deltaTime = (timestamp - lastTimestamp) / 16; // Normalize to ~60fps
+    // Scale deltaTime based on canvas size to ensure consistent speed across screen sizes
+    const canvasScale = canvas.width / 800; // 800 is the max width
+    deltaTime = (timestamp - lastTimestamp) / (16 * canvasScale); // Normalize to ~60fps and scale for screen size
     lastTimestamp = timestamp;
     
     // Update game physics if active
