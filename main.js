@@ -1243,24 +1243,31 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(gameLoop); 
     }
     
-    // Get initial ball position - Always start near center for unpredictability
+    // Get initial ball position with increased randomness
     function calculateInitialBallPosition(targetBucketNum) {
-        // Always start near the center, regardless of target bucket
+        // Always start in a random position within the top third of the canvas
         // This prevents players from predicting the outcome based on starting position
         
-        // Base position is center of canvas
-        const centerX = canvas.width / 2;
+        // Use full width with safety margin for starting positions
+        const safetyMargin = GAME_CONFIG.ballRadius * 3;
+        const minX = safetyMargin;
+        const maxX = canvas.width - safetyMargin;
         
-        // Add small random offset from center (within 20% of canvas width)
-        // This maintains unpredictability while still allowing successful paths
-        const maxOffset = canvas.width * 0.1; // 10% of canvas width to either side
-        const randomOffset = (Math.random() - 0.5) * maxOffset;
+        // Completely random position across the full width
+        // This makes paths much more varied
+        let xPos = minX + Math.random() * (maxX - minX);
         
-        // Calculate final position
-        let xPos = centerX + randomOffset;
-        
-        // Ensure within bounds
-        xPos = Math.max(GAME_CONFIG.ballRadius + 5, Math.min(canvas.width - GAME_CONFIG.ballRadius - 5, xPos));
+        // Add some occasional extreme positions to increase variety
+        if (Math.random() < 0.3) { // 30% chance of an extreme-ish position
+            // Pick left or right side extreme
+            if (Math.random() < 0.5) {
+                // Left side extreme
+                xPos = minX + Math.random() * (canvas.width * 0.25);
+            } else {
+                // Right side extreme
+                xPos = (canvas.width * 0.75) + Math.random() * (maxX - (canvas.width * 0.75));
+            }
+        }
         
         return xPos;
     }
@@ -1324,10 +1331,19 @@ document.addEventListener('DOMContentLoaded', () => {
                                 Math.min(Math.abs(distanceToTarget) / 100, 1.5) * 
                                 edgeFactor;
             
-            // Add controlled randomness to make paths look natural
-            // Less randomness for edge buckets
-            const randomFactor = (1 - Math.abs(edgeFactor - 0.5)) * 0.8;
-            currentVx = baseVelocity + (Math.random() - 0.5) * randomFactor;
+            // Add much more randomness to create greater path variety
+            // Use different path strategy based on attempt number
+            // This creates more diverse paths even to the same bucket
+            const attemptVariation = (retries % 3) * 0.5; // Cycles through 3 different strategies
+            const randomFactor = ((1 - Math.abs(edgeFactor - 0.5)) * 1.5) + attemptVariation;
+            
+            // Add occasional "trick shots" with more extreme initial velocity
+            if (Math.random() < 0.3) { // 30% chance of a trick shot attempt
+                currentVx = baseVelocity * (1 + Math.random()) + (Math.random() - 0.5) * 2.5;
+            } else {
+                // Normal randomized velocity
+                currentVx = baseVelocity + (Math.random() - 0.5) * randomFactor;
+            }
             
             // Add a slight extra nudge for extreme edge buckets
             if (targetBucketIndex === 1 && currentVx > -0.2) {
@@ -1338,10 +1354,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentVx += 0.5 + Math.random() * 0.5;
             }
             
-            // Vary vertical velocity for a more natural look
-            // Faster initial drop for edge buckets to increase momentum
-            const baseVertical = 1.0 + edgeFactor * 0.4;
-            currentVy = baseVertical + Math.random() * 0.3;
+            // Much more varied vertical velocity for unpredictable arcs
+            // Create a wider range of drop speeds and arcs
+            const verticalVariation = Math.random() < 0.3 ? 0.8 : 0.4; // Occasional high-arc shots
+            const baseVertical = 0.8 + edgeFactor * 0.4;
+            currentVy = baseVertical + Math.random() * verticalVariation;
+            
+            // Occasionally try a high bounce fast fall
+            if (Math.random() < 0.15) { // 15% chance
+                currentVy = baseVertical + 0.5 + Math.random() * 0.8;
+            }
             hitCount = 0;
             hitWall = false;
             lastHitTime = -Infinity; // Reset lastHitTime
@@ -1396,15 +1418,27 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Record hit time
                         lastHitTime = time; 
 
-                        // Calculate deflection angle & strength with more randomness
+                        // Calculate deflection with MUCH more randomness to create varied paths
                         let deflectAngle = angle; // Base angle away from peg center
-                        // Add random angle variation (+/- ~15 degrees)
-                        deflectAngle += (Math.random() - 0.5) * 0.5; 
-                        const deflectStrength = 0.6 + Math.random() * 0.7;
                         
-                        // Apply deflection
-                        currentVx += Math.cos(deflectAngle) * deflectStrength * 1.2; // Horizontal slightly stronger
-                        currentVy += Math.sin(deflectAngle) * deflectStrength * 0.8; // Vertical slightly weaker
+                        // Add significant random angle variation (+/- ~30 degrees)
+                        deflectAngle += (Math.random() - 0.5) * 1.0; 
+                        
+                        // Occasionally add extreme angle changes for dramatic bounces
+                        if (Math.random() < 0.2) { // 20% chance
+                            deflectAngle += (Math.random() - 0.5) * 1.5;
+                        }
+                        
+                        // More variable deflection strength
+                        const deflectStrength = 0.5 + Math.random() * 1.2;
+                        
+                        // Apply deflection with more variation between horizontal and vertical
+                        const horizontalFactor = 0.8 + Math.random() * 0.8; // 0.8-1.6
+                        const verticalFactor = 0.6 + Math.random() * 0.8;   // 0.6-1.4
+                        
+                        // Apply the deflection forces
+                        currentVx += Math.cos(deflectAngle) * deflectStrength * horizontalFactor;
+                        currentVy += Math.sin(deflectAngle) * deflectStrength * verticalFactor;
                         
                         // Ensure minimum downward velocity after hit
                         currentVy = Math.max(0.8, currentVy); // Increase min bounce speed slightly
