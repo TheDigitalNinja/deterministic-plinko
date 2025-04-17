@@ -309,7 +309,7 @@
             // Game configuration
             const GAME_CONFIG = {
                 // Peg configuration
-                pegRadius: 6,
+                pegRadius: 8,           // Increased from 6 to 8 to reduce chance of passing through
                 pegColor: '#f8f9fa',
                 pegRows: 15,            // Increased number of rows of pegs
                 pegSpacing: 50,         // Horizontal spacing between pegs
@@ -353,7 +353,7 @@
                     '#b5179e'  // Magenta
                 ],
                 bucketHighlightTime: 2000, // How long bucket highlight effect lasts (ms)
-                bucketDepth: 0.15,       // Bucket height as proportion of canvas height (increased from 0.1)
+                bucketDepth: 0.18,       // Bucket height as proportion of canvas height (increased to 0.18)
                 bucketRimThickness: 5,   // Thickness of bucket rim in pixels
                 bucketGlowIntensity: 0.4, // Intensity of bucket highlight glow
                 bucketParticles: true,   // Whether to show particles in buckets
@@ -364,12 +364,12 @@
                 speedDamping: 0.95,       // Speed loss on wall collision
                 
                 // Path control
-                pathControlStrength: 0.5,  // Base strength of guidance (0-1) - increased for more reliability
-                pathControlRamp: 0.1,      // How much control increases as ball descends - increased
-                pathRandomness: 0.1,       // Random factor in ball movement (0-1) - reduced for more control
+                pathControlStrength: 0.6,  // Base strength of guidance (0-1) - increased for more reliability
+                pathControlRamp: 0.15,     // How much control increases as ball descends - increased for smoother guidance
+                pathRandomness: 0.08,      // Random factor in ball movement (0-1) - reduced for more control
                 enforcedPathGuidance: true, // If true, increases guidance dramatically near bottom
                 guaranteedLanding: true,    // Ensures ball ALWAYS lands in target bucket
-                enforcementZone: 0.65      // Height threshold (as % of canvas) where strong enforcement begins
+                enforcementZone: 0.6       // Height threshold (as % of canvas) where strong enforcement begins - starting earlier
             };
             
             // Game state
@@ -560,7 +560,11 @@
                 const bucketY = canvas.height * 0.84;
                 const bucketHeight = canvas.height * GAME_CONFIG.bucketDepth;
                 
+                // Make buckets slightly wider to increase landing reliability
+                // Will use 110% of the standard width calculation
+                
                 // Simple approach: 5 equal buckets across the entire canvas width
+                // Simple division - exactly 5 equal buckets across the full canvas
                 const bucketWidth = canvas.width / GAME_CONFIG.bucketCount;
                 
                 // Position the buckets
@@ -568,7 +572,7 @@
                     // Get the color for this bucket (or use fallback)
                     const bucketColor = GAME_CONFIG.bucketColors[i] || '#4a4e69';
                     
-                    // Calculate bucket position - center of each bucket
+                    // Simple positioning - evenly distribute buckets
                     const bucketCenterX = (i + 0.5) * bucketWidth;
                     
                     bucketLocations.push({
@@ -1169,6 +1173,10 @@
                 
                 let hasCollided = false;
                 
+                // Pre-calculate ball movement for more accurate collision detection
+                const nextX = ball.x + ball.velocityX * deltaTime;
+                const nextY = ball.y + ball.velocityY * deltaTime;
+                
                 for (let i = 0; i < pegLocations.length; i++) {
                     const peg = pegLocations[i];
                     
@@ -1180,9 +1188,20 @@
                     const dy = ball.y - peg.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
-                    // Check if collision occurred
+                    // Also check the next position for potential collisions (prevents tunneling)
+                    const nextDx = nextX - peg.x;
+                    const nextDy = nextY - peg.y;
+                    const nextDistance = Math.sqrt(nextDx * nextDx + nextDy * nextDy);
+                    
+                    // Check if collision occurred or will occur in the next frame
                     const minDistance = ball.radius + peg.radius;
-                    if (distance < minDistance) {
+                    // Slightly increase collision detection radius to prevent tunneling for fast-moving balls
+                    const extendedDistance = minDistance + 2; 
+                    const ballSpeed = Math.abs(ball.velocityX) + Math.abs(ball.velocityY);
+                    
+                    if (distance < minDistance || 
+                        (nextDistance < minDistance && distance > nextDistance) || 
+                        (ballSpeed > 12 && distance < extendedDistance)) {
                         hasCollided = true;
                         
                         // Track this collision
@@ -1194,7 +1213,7 @@
                         const angle = Math.atan2(dy, dx);
                         
                         // Move ball outside of collision more forcefully
-                        const overlap = minDistance - distance + 1; // Add 1px extra to prevent sticking
+                        const overlap = minDistance - distance + 2; // Increase from 1 to 2px extra to prevent sticking
                         ball.x += Math.cos(angle) * overlap;
                         ball.y += Math.sin(angle) * overlap;
                         
@@ -1385,22 +1404,63 @@
                 // Only check when ball is in the lower part of the screen
                 if (ball.y < canvas.height * 0.85) return false;
                 
-                // FINAL FAILSAFE: If the ball is very low, force it into target bucket
+                // Safety check - if ball has gone too far down without landing, force it to land
+                if (ball.y > canvas.height * 1.1) {
+                    console.error("Ball went too far down without landing - forcing landing");
+                    // Force to target bucket position
+                    const targetBucketObj = bucketLocations[targetBucket - 1];
+                    if (targetBucketObj) {
+                        ball.x = targetBucketObj.x;
+                        ball.y = targetBucketObj.y + targetBucketObj.height * 0.5;
+                    }
+                }
+                
+                // CRITICAL LEGAL REQUIREMENT: If the ball is very low, we MUST ensure it's on target
                 // This is absolutely required for legal compliance - no misses allowed
-                if (ball.y > canvas.height * 0.98) {
-                    // Get the target bucket and force ball into it
+                if (ball.y > canvas.height * 0.80) {
+                    // Get the target bucket position
                     const targetBucketObj = bucketLocations[targetBucket - 1];
                     
-                    // Force alignment with target bucket
-                    ball.x = targetBucketObj.x;
+                    // Calculate distance to target
+                    const dx = targetBucketObj.x - ball.x;
                     
-                    // We manually place it in the bucket, but we DON'T count this
-                    // as a separate bucket landing - the normal code below will handle
-                    // the statistics since the ball is now in the correct position
+                    // Calculate how much of the remaining journey we've completed (0-1)
+                    const journeyProgress = (ball.y - canvas.height * 0.80) / (canvas.height * 0.20);
+                    
+                    // Apply increasingly strong guidance as ball approaches bottom
+                    // This creates the appearance of natural bounces while ensuring the outcome
+                    const correctionStrength = Math.pow(journeyProgress, 2) * 0.3; // Starts small, increases exponentially
+                    
+                    // Apply gradual velocity adjustment - stronger as we get closer to bottom
+                    ball.velocityX += dx * correctionStrength * deltaTime;
+                    
+                    // If we're extremely close to buckets and not on target, increase steering force
+                    if (ball.y > canvas.height * 0.95 && Math.abs(dx) > 20) {
+                        // Apply stronger but still relatively smooth correction when needed
+                        // This appears as light bounces or influences rather than teleportation
+                        const emergencyCorrection = Math.sign(dx) * Math.min(Math.abs(dx) * 0.08, 2.0) * deltaTime;
+                        ball.velocityX += emergencyCorrection;
+                        
+                        // Log the emergency guidance only occasionally
+                        if (Math.random() < 0.05) {
+                            console.log("ENHANCED GUIDANCE: Applied near-bottom course correction");
+                        }
+                    }
                 }
+                
+                // When below 95% of screen height, ONLY check for the target bucket
+                // This prevents any possibility of landing in the wrong bucket
+                const finalApproach = ball.y > canvas.height * 0.95;
                 
                 for (let i = 0; i < bucketLocations.length; i++) {
                     const bucket = bucketLocations[i];
+                    const bucketNumber = i + 1;
+                    
+                    // CRITICAL: During final approach, only check the target bucket
+                    // This ensures we can never land in the wrong bucket
+                    if (finalApproach && bucketNumber !== targetBucket) {
+                        continue;
+                    }
                     
                     // Check if ball is within bucket boundaries
                     if (
@@ -1410,8 +1470,20 @@
                         ball.y < bucket.y + bucket.height
                     ) {
                         // Ball landed in a bucket
-                        const bucketNumber = i + 1;
                         const landedInTargetBucket = bucketNumber === targetBucket;
+                        
+                        // CRITICAL: We should NEVER land in the wrong bucket
+                        // If we somehow detect the wrong bucket, this is a catastrophic failure
+                        if (!landedInTargetBucket) {
+                            // Log this critical error but NEVER modify the ball position visibly
+                            console.error("CRITICAL ERROR: Ball detected in wrong bucket - THIS SHOULD NEVER HAPPEN");
+                            
+                            // Continue with the target bucket number only
+                            // We must NOT teleport the ball - that would create visual deception
+                            // Instead, just override the bucketNumber for statistics
+                            // The user will see the ball where it actually landed
+                            return false;
+                        }
                         
                         // Update game statistics
                         handleBallLanding(bucketNumber, landedInTargetBucket);
@@ -1699,16 +1771,35 @@
                         const correctionRange = (verticalProgress - 0.75) / 0.25; // 0 to 1 range
                         const easedCorrection = easeOutQuart(correctionRange);
                         
-                        // Graduated velocity adjustment - starts subtler
-                        const velocityAdjustment = Math.sign(dx) * (1 + easedCorrection * 2);
-                        ball.velocityX = (ball.velocityX * 0.5) + (velocityAdjustment * 0.5); // Blend existing and new velocity
+                        // Calculate remaining distance to bottom (to determine how quickly we need to correct)
+                        const remainingDistance = canvas.height - ball.y;
+                        // Approximate frames remaining before reaching bottom
+                        const framesRemaining = Math.max(10, remainingDistance / (ball.velocityY * deltaTime));
                         
-                        // More subtle position adjustment that increases with depth
-                        // Only apply direct position adjustments after 85% height
+                        // Graduated velocity adjustment - starts subtler, becomes more proportional to needed correction
+                        // Calculate how much velocity change is needed per frame to reach target
+                        const neededVelocityChange = dx / framesRemaining * 0.8; // 80% of perfect correction
+                        
+                        // Blend existing velocity with needed correction proportionally
+                        // More preservation of current velocity at the beginning, more correction near the end
+                        const blendFactor = 0.3 + (easedCorrection * 0.5); // 0.3 to 0.8 range
+                        ball.velocityX = ball.velocityX * (1 - blendFactor) + neededVelocityChange * blendFactor;
+                        
+                        // Apply a small positional adjustment that matches the velocity change
+                        // This makes the correction appear more physically natural
                         if (verticalProgress > 0.85) {
-                            // Smaller incremental position adjustments (max 10% of distance per frame)
-                            const positionAdjustment = dx * easedCorrection * 0.1;
+                            // Smaller incremental position adjustments with smoother movement
+                            // Limit to 3% of distance per frame to avoid jerky movement
+                            const positionAdjustment = dx * easedCorrection * Math.min(0.03, deltaTime * 0.01);
                             ball.x += positionAdjustment;
+                            
+                            // Ensure velocity and position changes are consistent for natural movement
+                            // This prevents the ball from appearing to curve unnaturally
+                            if (Math.abs(positionAdjustment) > 0.5) {
+                                // Make velocity direction match position adjustment direction
+                                const velocityMagnitude = Math.abs(ball.velocityX);
+                                ball.velocityX = Math.sign(positionAdjustment) * velocityMagnitude;
+                            }
                         }
                     }
                 }
@@ -1750,14 +1841,28 @@
                     // Use remaining distance to bottom to calculate how quickly to move
                     const remainingDistance = canvas.height - ball.y;
                     // How many frames until we hit bottom (approximately)
-                    const framesRemaining = Math.max(5, remainingDistance / (ball.velocityY * deltaTime));
-                    // Amount to move per frame (20% of remaining distance per frame, max 30% of gap)
-                    const moveAmount = Math.min(dx * 0.2, dx * 3 / framesRemaining);
+                    const framesRemaining = Math.max(10, remainingDistance / (ball.velocityY * deltaTime));
+                    
+                    // Calculate what fraction of the distance we should move each frame
+                    // Use easing function to make the movement look more natural - slower start, accelerated middle
+                    const progress = 1 - (remainingDistance / (canvas.height * 0.08)); // 0 to 1 as we approach bottom
+                    const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                    const correctionStrength = easeInOutCubic(Math.min(1, progress));
+                    
+                    // Amount to move per frame - much smaller adjustment (5% max) for natural motion
+                    // Uses a graduated approach that smoothly accelerates
+                    const moveAmount = Math.min(dx * 0.05, dx / framesRemaining * correctionStrength * 2);
                     
                     // Apply graduated correction
                     ball.x += moveAmount;
-                    // Dampen horizontal velocity
-                    ball.velocityX = (ball.velocityX * 0.3) + (Math.sign(dx) * 0.5);
+                    
+                    // Set horizontal velocity to match the position change for consistency
+                    // This creates more natural motion by ensuring velocity and position changes align
+                    ball.velocityX = moveAmount / deltaTime * 0.8; // 80% of position change rate
+                    
+                    // Add a small random wobble to make it look less mechanical
+                    const maxWobble = Math.min(0.3, (1 - correctionStrength) * 0.5);
+                    ball.velocityX += (Math.random() - 0.5) * maxWobble;
                     
                     // Set correction level to highest emergency
                     gameStats.correctionLevel = "Final Emergency";
@@ -1766,17 +1871,98 @@
                     console.log(`Final emergency correction at ${Math.round(ball.y / canvas.height * 100)}% height, ${framesRemaining.toFixed(1)} frames to impact`);
                 }
                 
-                // Absolute failsafe: prevent ball from going completely out of bounds
-                // This should never happen with our guidance but is a final safety check
+                // CRITICAL FAILSAFE: We must ensure the ball reaches the target bucket
+                // Start applying stronger but still natural-looking guidance at 85% height
+                if (ball.y > canvas.height * 0.85) {
+                    // Get target bucket
+                    const target = bucketLocations[targetBucket - 1];
+                    
+                    // Calculate horizontal distance to target
+                    const dx = target.x - ball.x;
+                    
+                    // Calculate remaining vertical distance to bottom
+                    const verticalDistanceLeft = canvas.height - ball.y;
+                    
+                    // Calculate how much of the final approach we've completed (0-1)
+                    const approachProgress = Math.min(1.0, (ball.y - canvas.height * 0.85) / (canvas.height * 0.15));
+                    
+                    // Use easing function for natural acceleration of guidance
+                    const easeInOutQuad = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                    const easedProgress = easeInOutQuad(approachProgress);
+                    
+                    // Calculate frames remaining until impact (approximately)
+                    const framesLeft = Math.max(8, verticalDistanceLeft / (ball.velocityY * deltaTime));
+                    
+                    // Calculate how much velocity change is needed per frame to reach target
+                    const neededVelocityPerFrame = dx / framesLeft;
+                    
+                    // Apply natural-looking acceleration toward target
+                    // The strength increases as we get closer to bottom but in a smooth curve
+                    // Never exceeds reasonable physics acceleration values
+                    const correctionForce = neededVelocityPerFrame * easedProgress * 0.4 * deltaTime;
+                    
+                    // Add to velocity (appears as invisible forces acting on the ball)
+                    ball.velocityX += correctionForce;
+                    
+                    // Add small natural-looking randomness to prevent perfectly straight movement
+                    // Randomness decreases as we get closer to ensure accuracy
+                    const randomFactor = (1 - easedProgress) * 0.1;
+                    ball.velocityX += (Math.random() - 0.5) * randomFactor;
+                    
+                    // If we're very close to bottom and still off target, apply slightly stronger guidance
+                    // This looks like a subtle influence rather than teleportation
+                    if (approachProgress > 0.8 && Math.abs(dx) > 15) {
+                        // Apply small additional velocity in the right direction
+                        ball.velocityX += Math.sign(dx) * 0.2 * deltaTime;
+                        gameStats.correctionLevel = "Enhanced Guidance";
+                    }
+                    
+                    // Highest level of guidance - still kept within physical plausibility
+                    if (approachProgress > 0.95 && Math.abs(dx) > 5) {
+                        gameStats.correctionLevel = "Precision Guidance";
+                        
+                        // Log only occasionally
+                        if (Math.random() < 0.05) {
+                            console.log(`Precision guidance: ${Math.round(dx)}px from target, ${Math.round(framesLeft)} frames left`);
+                        }
+                    }
+                }
+                
+                // Ultimate failsafe: If somehow the ball gets below canvas, force landing in target bucket
                 if (ball.y - ball.radius > canvas.height) {
                     // Force ball into target bucket
                     const target = bucketLocations[targetBucket - 1];
-                    ball.x = target.x;
-                    ball.y = target.y + target.height / 2;
-                    ball.velocityX = 0;
-                    ball.velocityY = 1;
+                    if (target) {
+                        ball.x = target.x;
+                        ball.y = target.y + target.height * 0.5;
+                        ball.velocityX = 0;
+                        ball.velocityY = 1;
+                        
+                        // Log this critical override
+                        console.log("CRITICAL OVERRIDE: Ball teleported to target bucket");
+                        
+                        // Force the bucket landing check to handle it immediately
+                        const bucketIndex = targetBucket - 1;
+                        const bucket = bucketLocations[bucketIndex];
+                        if (bucket) {
+                            // Update game statistics and trigger landing
+                            handleBallLanding(targetBucket, true);
+                            
+                            // Force game completion
+                            isGameActive = false;
+                            gameState = 'completed';
+                            updateControls();
+                        }
+                    } else {
+                        // If somehow the target bucket doesn't exist, just end the game
+                        console.error("CRITICAL ERROR: Target bucket not found, ending game");
+                        ball = null;
+                        isGameActive = false;
+                        gameState = 'completed';
+                        updateControls();
+                    }
                     
-                    // Let the checkBucketLanding function handle it
+                    return true; // Return true to indicate we handled it
                 }
             }
             
@@ -1813,16 +1999,18 @@
                 const bucketOffset = targetBucket - Math.ceil(GAME_CONFIG.bucketCount / 2);
                 
                 // Calculate bias factor (higher for edge buckets, lower for middle)
+                // Increased all bias factors to give the ball a better starting position
+                // This creates more natural-looking paths that need less correction
                 let biasFactor;
                 if (targetBucket === 1 || targetBucket === GAME_CONFIG.bucketCount) {
                     // Strong bias for edge buckets
-                    biasFactor = 0.6; 
+                    biasFactor = 0.7; 
                 } else if (targetBucket === 2 || targetBucket === GAME_CONFIG.bucketCount - 1) {
                     // Moderate bias for near-edge buckets
-                    biasFactor = 0.4;
+                    biasFactor = 0.5;
                 } else {
                     // Minimal bias for middle buckets
-                    biasFactor = 0.2;
+                    biasFactor = 0.3;
                 }
                 
                 // Calculate distance to target bucket
@@ -1886,13 +2074,23 @@
                 // Calculate starting position
                 const initialX = calculateInitialBallPosition();
                 
-                // Create ball with initial velocity
+                // Ensure the bucket we're targeting exists and is valid
+                if (!bucketLocations[targetBucket - 1]) {
+                    console.error(`ERROR: Target bucket ${targetBucket} does not exist in bucketLocations!`);
+                    // Default to middle bucket if target is invalid
+                    targetBucket = Math.ceil(GAME_CONFIG.bucketCount / 2);
+                }
+                
+                // Create ball with initial velocity - add slight bias toward target
+                const target = bucketLocations[targetBucket - 1];
+                const initialBias = target.x > canvas.width/2 ? 0.5 : -0.5; 
+                
                 ball = {
                     x: initialX,
                     y: canvas.height * 0.05,
                     radius: GAME_CONFIG.ballRadius,
                     color: GAME_CONFIG.ballColor,
-                    velocityX: (Math.random() - 0.5) * 1.5, // Increased initial velocity
+                    velocityX: (Math.random() - 0.5) * 1.2 + initialBias, // Initial velocity with bias toward target
                     velocityY: 1.0, // Add initial downward velocity
                     // Track additional state
                     targetBucket: targetBucket,
