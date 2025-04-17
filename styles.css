@@ -1,0 +1,233 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background-color: #1a1a2e;
+    font-family: Arial, sans-serif;
+    color: #fff;
+}
+
+h1 {
+    text-align: center;
+    margin: 0 0 10px 0;
+}
+
+.game-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 1000px;
+    margin-top: 20px;
+}
+
+.game-content {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.debug-panel {
+    width: 200px;
+    background-color: #22223b;
+    margin-right: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    margin-top: 194px; /* Align with canvas */
+}
+
+.debug-panel h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #4a4e69;
+    padding-bottom: 8px;
+    color: #f8f9fa;
+}
+
+.debug-section {
+    margin-bottom: 15px;
+}
+
+.debug-label {
+    font-size: 0.9rem;
+    color: #adb5bd;
+    margin-bottom: 5px;
+}
+
+.debug-value {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.success-rate {
+    color: #4cc9f0;
+}
+
+.target-value {
+    color: #f72585;
+}
+
+.mode-value {
+    color: #4361ee;
+}
+
+.game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 750px;
+}
+
+.game-header {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.game-area {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    width: 100%;
+    gap: 15px;
+}
+
+.game-mode {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.game-mode h3 {
+    margin: 0 0 5px 0;
+    color: #f8f9fa;
+    font-size: 1.2rem;
+}
+
+.mode-description {
+    font-size: 0.9rem;
+    color: #adb5bd;
+    margin-bottom: 15px;
+}
+
+.game-stats {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    color: #adb5bd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 24px;
+}
+
+.bucket-buttons {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    margin-bottom: 20px;
+    max-width: 600px;
+}
+
+button {
+    background-color: #4a4e69;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    margin: 0 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+.target-btn {
+    font-weight: bold;
+    font-size: 1.1rem;
+    min-width: 50px;
+    position: relative;
+}
+
+.target-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: transparent;
+    transition: all 0.3s;
+}
+
+.target-btn.selected::after {
+    background-color: #f72585;
+    box-shadow: 0 0 10px rgba(247, 37, 133, 0.7);
+}
+
+.target-btn.selected {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+button:hover {
+    background-color: #6a6d91;
+    transform: translateY(-2px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+button:active {
+    transform: translateY(1px);
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+button.selected {
+    background-color: #f72585;
+    box-shadow: 0 0 10px rgba(247, 37, 133, 0.5);
+}
+
+button.ready {
+    background-color: #4cc9f0;
+    animation: readyPulse 2s infinite;
+}
+
+@keyframes readyPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 10px 3px rgba(76, 201, 240, 0.7);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 201, 240, 0);
+    }
+}
+
+button.active {
+    background-color: #7209b7;
+}
+
+canvas {
+    border: 2px solid #f72585;
+    background-color: #16213e;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
