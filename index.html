@@ -9,33 +9,7 @@
 <body>
     <div class="game-wrapper">
         <div class="game-content">
-            <div class="debug-panel">
-            <h3>Debug Info</h3>
-            
-            <div class="debug-section">
-                <div class="debug-label">Game Status:</div>
-                <div class="debug-value mode-value" id="debug-mode">Not Started</div>
-                
-                <div class="debug-label">Target Bucket:</div>
-                <div class="debug-value target-value" id="debug-target">None</div>
-                
-                <div class="debug-label">Landed in Bucket:</div>
-                <div class="debug-value" id="debug-landed-bucket">None</div>
-                
-                <div class="debug-label">Success Rate:</div>
-                <div class="debug-value success-rate" id="debug-success-rate">0% (0/0)</div>
-            </div>
-            
-            <div class="debug-section">
-                <div class="debug-label">Last Result:</div>
-                <div class="debug-value" id="debug-last-result">None</div>
-                
-                <div class="debug-label">Correction Level:</div>
-                <div class="debug-value" id="debug-correction-level">None</div>
-            </div>
-        </div>
-        
-        <div class="game-container">
+            <div class="game-container">
             <div class="game-header">
                 <h1>Plinko Game</h1>
                 <div class="game-mode">
@@ -58,6 +32,30 @@
             
             <div class="game-area">
                 <canvas id="plinkoCanvas"></canvas>
+            </div>
+        </div>
+            
+        <!-- Debug panel now appears on the right side -->
+        <div class="debug-panel">
+            <h3>Debug Info</h3>
+            
+            <div class="debug-section">
+                <div class="debug-label">Game Status:</div>
+                <div class="debug-value mode-value" id="debug-mode">Not Started</div>
+                
+                <div class="debug-label">Target Bucket:</div>
+                <div class="debug-value target-value" id="debug-target">None</div>
+                
+                <div class="debug-label">Landed in Bucket:</div>
+                <div class="debug-value" id="debug-landed-bucket">None</div>
+                
+                <div class="debug-label">Success Rate:</div>
+                <div class="debug-value success-rate" id="debug-success-rate">0% (0/0)</div>
+            </div>
+            
+            <div class="debug-section">
+                <div class="debug-label">Last Result:</div>
+                <div class="debug-value" id="debug-last-result">None</div>
             </div>
         </div>
         </div>
