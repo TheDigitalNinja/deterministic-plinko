@@ -47,7 +47,7 @@ h1 {
 .debug-panel {
     width: 200px;
     background-color: #22223b;
-    margin-right: 20px;
+    margin-left: 20px; /* Changed from margin-right to margin-left */
     padding: 15px;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
@@ -253,15 +253,28 @@ canvas {
   .debug-panel {
     width: 100%;
     box-sizing: border-box;
-    margin: 0;
+    margin: 20px 0 0 0; /* Add margin top to separate from canvas */
     border-radius: 0;
     background: rgba(30, 41, 59, 0.97);
     box-shadow: 0 -2px 12px rgba(0,0,0,0.4);
     padding: 10px 0 10px 0;
     text-align: center;
-    margin-top: 0;
+    order: 2; /* Ensure it appears after the game container */
   }
   .game-container {
     max-width: 100vw;
+    order: 1; /* Ensure it appears before the debug panel */
+  }
+  
+  /* Make debug panel more compact on mobile */
+  .debug-section {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+  }
+  
+  .debug-label, .debug-value {
+    margin-bottom: 5px;
   }
 }
